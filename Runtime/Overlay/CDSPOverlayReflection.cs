@@ -240,9 +240,6 @@ namespace CDSP.Overlay
             "IsReady", "IsAwaken", "IsStarted"
         };
 
-        // Walks the type hierarchy top-down (most derived first) and stops
-        // before stopBefore. Pass typeof(Presentation) to skip the framework
-        // base + MonoBehaviour/Component/Object noise (enabled, name, tag...).
         /// <summary>Dumps fields then properties of <paramref name="obj"/> (most-derived first, stops before <paramref name="stopBefore"/>). Skips framework noise; failures render as text, never throw.</summary>
         public static List<FieldRow> DumpMembers(object obj, int max = 40, bool includeNonPublic = false, bool hideStandard = true, Type stopBefore = null)
         {

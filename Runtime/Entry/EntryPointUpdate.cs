@@ -68,13 +68,6 @@ namespace CDSP.Entry
             if (!IsUpdateTick) return;
             var deltaTime = Mathf.Min(Time.deltaTime, DELTATIME_MAX);
 
-            // Mutation-tolerant forward iteration WITHOUT per-frame allocation.
-            // Roots may register/unregister during ticks (e.g. a system unregisters
-            // its own root). Naive `for (i < Count)` skips the next root after a removal
-            // (indices shift left). A `new List<>(...)` snapshot would fix it but allocates
-            // 2 objects x 3 passes per frame — avoidable GC pressure in the hot loop.
-            // New roots appended during the pass are deferred to the next pass; unregistered
-            // roots are not ticked.
             var list = EntryPoint.MainContextsList;
             int initialCount = list.Count;
             int ticked = 0;

@@ -70,7 +70,6 @@ namespace CDSP.Overlay
         int _sectionIndex;
         int _rowIndex;
 
-        // Style textures
         Texture2D _texWhite;
         Texture2D _texBg;
         Texture2D _texPanel;
@@ -164,7 +163,7 @@ namespace CDSP.Overlay
                 _labelsWindowVisible = !_labelsWindowVisible;
             if (Input.GetKeyDown(LabelsQuickKey))
                 LabelsEnabled = !LabelsEnabled;
-            if (IsFullyOff) return; // hotkeys above are the only thing that runs while off
+            if (IsFullyOff) return;
 
             float dt = Time.unscaledDeltaTime;
             if (dt > 0f)
@@ -596,15 +595,12 @@ namespace CDSP.Overlay
 
         void OnGUI()
         {
-            // Fully off (no F1/F2/F3 state): do absolutely nothing —
-            // no cache scans, no FindObjects, no drawing.
             if (IsFullyOff) return;
 
             InitStyles();
             InitLabelStyles();
             RefreshCache();
 
-            // Screen labels live independently of windows.
             if (LabelsEnabled) DrawScreenLabels();
 
             if (_explorerVisible)
@@ -619,8 +615,6 @@ namespace CDSP.Overlay
                 _labelsRect = GUILayout.Window(LabelsWindowId, _labelsRect, DrawLabelsWindow, "", _windowStyle);
             }
 
-            // Click-to-select on empty screen area whenever any overlay UI is active.
-            // Clicks on windows/cards are already consumed by their controls.
             var e = Event.current;
             if ((_explorerVisible || _labelsWindowVisible || LabelsEnabled)
                 && e != null && e.type == EventType.MouseDown && e.button == 0
@@ -1137,8 +1131,6 @@ namespace CDSP.Overlay
             }
         }
 
-        // Depth comes from the same geometry as the box, so sort order
-        // always matches what is actually drawn (fixes roots popping over children).
         internal bool TryGetScreenRect(Context ctx, Camera cam, out Rect rect, out float depth)
         {
             rect = default;
@@ -1232,11 +1224,6 @@ namespace CDSP.Overlay
 
         #region BOX SOURCE (own visuals only)
 
-        // A context Presentation parents all of its children Instances, so a naive
-        // GetComponentInChildren<Renderer> on a root returns some arbitrary
-        // descendant's mesh and the root card "follows" other objects.
-        // We only look inside the context's OWN visuals: the Presentation itself
-        // plus descendants that do not belong to another context.
 
         const float BoxCacheTTL = 1f;
 
@@ -1277,13 +1264,10 @@ namespace CDSP.Overlay
         {
             rend = null;
             col = null;
-            // Fresh cache hit: reuse (nulls mean "own visuals not found").
-            // If a cached component was destroyed since, re-search.
             if (_boxCache.TryGetValue(ctx, out var src) && Now - src.time < BoxCacheTTL)
             {
                 if ((src.hasRend && src.rend == null) || (src.hasCol && src.col == null))
                 {
-                    // Destroyed under us -> fall through to re-search.
                 }
                 else
                 {
@@ -1315,7 +1299,7 @@ namespace CDSP.Overlay
             if (own != null) return own;
             foreach (Transform child in t)
             {
-                if (child != null && _ownedInstances.Contains(child)) continue; // чужой контекст
+                if (child != null && _ownedInstances.Contains(child)) continue;
                 var found = FindOwn<T>(child, depth + 1);
                 if (found != null) return found;
             }

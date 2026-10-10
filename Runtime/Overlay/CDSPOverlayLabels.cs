@@ -27,7 +27,6 @@ namespace CDSP.Overlay
 
         bool LabelsEnabled { get; set; }
 
-        // Card content (defaults: Box + Name + Domain + Highlight selected)
         bool _showBox = true;
         bool _showName = true;
         bool _showContextName;
@@ -38,7 +37,6 @@ namespace CDSP.Overlay
         bool _showSystemFields;
         bool _showPresentationFields;
 
-        // Filters (default: only Has presentation)
         bool _showPrivateLabels;
         bool _labelsShowDead;
         bool _labelsShowInactive;
@@ -47,13 +45,11 @@ namespace CDSP.Overlay
         bool _highlightSelected = true;
         string _labelsSearch = "";
 
-        // Links & fade
         bool _showParentLines = true;
         bool _fadeByMouse;
         float _depthContrast;
         int _maxDistance;
 
-        // Size (defaults: 64 / 8 / 11 / 140 / 0)
         int _maxLabels = 64;
         int _maxFieldsPerSource = 8;
         int _labelFontSize = 11;
@@ -331,12 +327,10 @@ namespace CDSP.Overlay
                 if (items.Count >= _maxLabels * 2) break;
             }
 
-            // Nearest first -> keep MaxLabels -> alpha -> far first for drawing.
             items.Sort(CompareNearFirst);
             if (items.Count > _maxLabels) items.RemoveRange(_maxLabels, items.Count - _maxLabels);
             if (items.Count == 0) return;
 
-            // Alpha: depth fade relative to the nearest (it stays opaque).
             float minD = items[0].depth, maxD = items[0].depth;
             foreach (var it in items)
             {
@@ -371,8 +365,6 @@ namespace CDSP.Overlay
             if (items.Count == 0) return;
             items.Sort(CompareFarFirst);
 
-            // Stacking: near cards keep their anchor, far cards take the best
-            // nearby free spot (minimal overlap + minimal drift from anchor).
             float lineH = _cardStyle.fontSize + 6f;
             float cardW = Mathf.Clamp(_labelCardWidth, 100f, 340f);
             var placed = new List<Rect>(items.Count);
@@ -426,7 +418,6 @@ namespace CDSP.Overlay
                 DrawOutline(card, WithAlpha(isSel ? new Color(0.45f, 0.70f, 1f) : state, it.alpha), 1f);
             }
 
-            // Selected highlight even when its card was culled by MaxLabels.
             if (_highlightSelected && _selected != null && _selected.Instance != null)
             {
                 bool drawn = false;
@@ -461,8 +452,6 @@ namespace CDSP.Overlay
             return new Rect(Mathf.Clamp(x, 4f, maxX), Mathf.Clamp(y, 4f, maxY), w, h);
         }
 
-        // Best nearby free spot: heavy penalty for overlapping placed cards,
-        // small penalty for drifting away from the anchor (vertical drift costs 2x).
         static Rect PlaceCard(Rect anchor, Rect box, float w, float h, List<Rect> placed)
         {
             Rect best = anchor;
@@ -603,7 +592,6 @@ namespace CDSP.Overlay
                 e.pRows = CDSPOverlayReflection.DumpMembers(p, _maxFieldsPerSource, _showPrivateLabels, true, typeof(Presentation));
             else e.pRows.Clear();
 
-            // Drop redundant D./S./P. prefixes when a single source is selected.
             int sources = (_showDomainFields ? 1 : 0) + (_showSystemFields ? 1 : 0) + (_showPresentationFields ? 1 : 0);
             bool single = sources == 1;
 

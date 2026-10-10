@@ -91,6 +91,26 @@ namespace CDSP.Base
             _destroyAction(_gameObject);
         }
 
+        /// <summary>Re-attaches temporally parked children back to the surviving view (failed-swap rollback).</summary>
+        public void ReattachChildren()
+        {
+            HadPreviousAwakenPresentation = false;
+            if (_temporalChildContent == null || _temporalChildContent.Length == 0)
+            {
+                _temporalChildContent = null;
+                return;
+            }
+
+            if (_gameObject != null)
+                for (int i = 0; i < _temporalChildContent.Length; i++)
+                {
+                    if (_temporalChildContent[i] == null) continue;
+                    _temporalChildContent[i].transform.SetParent(_gameObject.transform);
+                    _temporalChildContent[i].transform.SetAsLastSibling();
+                }
+            _temporalChildContent = null;
+        }
+
         public void Reset()
         {
             _gameObject = null;

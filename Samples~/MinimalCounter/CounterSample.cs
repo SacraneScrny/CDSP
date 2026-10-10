@@ -32,6 +32,5 @@ namespace CDSP.Samples
 
     public sealed class CounterContext : Context<CounterDomain, CounterSystem, CounterPresentation> { }
 
-    // Scene root: empty GameObject + this component, no prefab needed.
     public sealed class CounterRoot : ContextRoot<CounterContext> { }
 }

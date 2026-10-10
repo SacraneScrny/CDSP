@@ -154,9 +154,6 @@ namespace CDSP.Base
             if (prefab != null)
             {
                 child.CreatePresentation(prefab, Instance?.transform);
-                // Deferred parenting: if the parent has no Instance yet (not awaken),
-                // skip PutTransformInside now (it would only log an error) — Awake()
-                // reparents orphaned prefab children once the parent Instance exists.
                 if (Instance != null)
                     child.PutTransformInside(this);
             }
@@ -403,6 +400,12 @@ namespace CDSP.Base
             bool addComponent = false)
         {
             if (prefab == null) throw new NullReferenceException($"Cannot create presentation {GetType().Name}");
+            Transform prevParent = null;
+            if (root == null && Instance != null)
+            {
+                try { prevParent = Instance.transform.parent; }
+                catch { prevParent = null; }
+            }
             var newInstance = _instantiateAction(prefab);
             newInstance.transform.SetParent(root);
             newInstance.name = goName ?? prefab.name;
@@ -415,18 +418,33 @@ namespace CDSP.Base
                 _destroyAction(newInstance);
                 throw;
             }
-            OnPresentationUpdating(Instance);
+            try
+            {
+                OnPresentationUpdating(Instance);
+            }
+            catch
+            {
+                try { RestoreAfterFailedSwap(); }
+                catch (global::System.Exception re)
+                {
+                    Debug.LogError($"Failed-swap restore failed for {GetType().Name}: {re.Message}");
+                }
+                try { _destroyAction(newInstance); }
+                catch (global::System.Exception ce)
+                {
+                    Debug.LogError($"Failed-swap cleanup failed for {GetType().Name}: {ce.Message}");
+                }
+                throw;
+            }
             Instance = newInstance;
+            if (prevParent != null)
+                newInstance.transform.SetParent(prevParent);
             try
             {
                 OnPresentationUpdated(Instance, addComponent);
             }
             catch
             {
-                // Fill validated above, so this should not throw; if it does (e.g. custom
-                // addComponent failure), the old view is already gone and logical children
-                // are held in the temporal cache — reattach them to the new instance
-                // to avoid orphaning, then rethrow.
                 RestoreLogicalChildren();
                 throw;
             }
@@ -449,6 +467,11 @@ namespace CDSP.Base
             CacheLogicalChildren();
             if (instance != null)
                 _destroyAction(instance);
+        }
+        /// <summary>Rolls a failed hot-swap back: re-attaches temporally parked logical children to the surviving view.</summary>
+        internal virtual void RestoreAfterFailedSwap()
+        {
+            RestoreLogicalChildren();
         }
         internal virtual void OnPresentationUpdated(GameObject instance, bool addComponent)
         {
@@ -572,9 +595,8 @@ namespace CDSP.Base
             var cur = includeSelf ? this : Parent;
             while (cur != null)
             {
-                if (cur is T t)
+                if (cur is T t && !cur.IsDead)
                 {
-                    if (cur.IsDead) continue;
                     result = t;
                     return true;
                 }
@@ -644,8 +666,6 @@ namespace CDSP.Base
         {
             if (Instance != null) return;
             CreateEmptyPresentation();
-            // Deferred parenting: if the logical parent has no Instance yet, skip silently —
-            // the ancestor Awake() ReparentOrphanedChildren() will attach once ready.
             if (Parent != null && Parent.Instance != null)
                 PutTransformInside(Parent);
         }
@@ -789,9 +809,6 @@ namespace CDSP.Base
             }
             else
             {
-                // Roots have no parent to mark them dead: do it directly (keeps
-                // IsUpdating/IsDead consistent with non-roots) and leave the tick
-                // loop so dead roots are not ticked/leaked.
                 MarkDead();
                 try { CDSP.Entry.EntryPoint.Unregister(this); } catch { }
             }
@@ -925,11 +942,6 @@ namespace CDSP.Base
         
         internal sealed override void OnPresentationDestroy(Presentation presentation)
         {
-            // Fallback for views destroyed outside CDSP (Unity OnDestroy).
-            // Stale views (already replaced by a hot-swap — notified explicitly in
-            // OnPresentationUpdating) and notifications arriving mid-swap (sync destroy
-            // inside the swap action, e.g. DestroyImmediate) must not wipe the pending
-            // swap state (HadPreviousAwakenPresentation + detached children cache).
             if (_presentationContainer.IsSwapping) return;
             if (!ReferenceEquals(presentation, _presentationContainer.Presentation)) return;
             Presentation?.InternalDispose();
@@ -943,9 +955,6 @@ namespace CDSP.Base
         {
             if (instance != null)
             {
-                // Cache only logical children (context-owned Instances). View-internal
-                // children stay with the old view and are destroyed with it — otherwise
-                // hot-swaps accumulate stale internals in the new view.
                 var keep = new HashSet<GameObject>();
                 if (_childContexts != null && _childContexts.Count > 0)
                 {
@@ -971,10 +980,6 @@ namespace CDSP.Base
             }
             if (oldAwake)
             {
-                // Deterministic old-view notification at the swap point, independent of
-                // the destroy action: pooling actions never raise Unity OnDestroy, and the
-                // deferred/sync OnDestroy of the replaced view is skipped as stale above.
-                // Order mirrors System.PresentationDestroy: context first, then system.
                 OnPresentationDestroy(old);
                 System.OnPresentationDestroy(old);
             }
@@ -983,6 +988,10 @@ namespace CDSP.Base
         {
             if (!_presentationContainer.CanFill(newInstance, addComponent))
                 throw new NullReferenceException($"Presentation {newInstance.name} doesn't have a Presentation component. {typeof(TPresentation).Name}");
+        }
+        internal sealed override void RestoreAfterFailedSwap()
+        {
+            _presentationContainer.ReattachChildren();
         }
         internal sealed override void OnPresentationUpdated(GameObject instance, bool addComponent)
         {
@@ -999,8 +1008,6 @@ namespace CDSP.Base
         internal override void Destroying()
         {
             base.Destroying();
-            // Deterministic final cleanup: do not rely on the deferred Unity OnDestroy
-            // (it becomes a guarded duplicate, skipped as stale once Reset() runs).
             var pres = Presentation;
             pres?.InternalDispose();
             _presentationContainer.Reset();
