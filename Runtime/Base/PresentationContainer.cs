@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 
 using UnityEngine;
 
@@ -46,17 +47,42 @@ namespace CDSP.Base
             }
             HadPreviousAwakenPresentation = false;
         }
-        public void CacheChildren()
+        public bool CanFill(GameObject gameObject, bool addComponent)
+        {
+            if (gameObject == null) return false;
+            if (addComponent) return true;
+            if (gameObject.GetComponent<TPresentation>() != null) return true;
+            if (gameObject.GetComponentInChildren<TPresentation>() != null) return true;
+            return false;
+        }
+        public void CacheChildren(HashSet<GameObject> keep = null)
         {
             if (_gameObject == null) return;
             if (IsValid && Presentation.IsAwaken) HadPreviousAwakenPresentation = true;
-            
-            int n = _gameObject.transform.childCount;
-            _temporalChildContent = new GameObject[n];
-            for (int i = 0; i < n; i++)
-                _temporalChildContent[i] = _gameObject.transform.GetChild(i).gameObject;
-            for (int i = n-1; i >= 0; i--)
-                _temporalChildContent[i].transform.SetParent(null);
+
+            if (keep == null)
+            {
+                int n = _gameObject.transform.childCount;
+                _temporalChildContent = new GameObject[n];
+                for (int i = 0; i < n; i++)
+                    _temporalChildContent[i] = _gameObject.transform.GetChild(i).gameObject;
+                for (int i = n - 1; i >= 0; i--)
+                    _temporalChildContent[i].transform.SetParent(null);
+                return;
+            }
+
+            if (keep.Count == 0) { _temporalChildContent = null; return; }
+            var list = new List<GameObject>(keep.Count);
+            int m = _gameObject.transform.childCount;
+            for (int i = 0; i < m; i++)
+            {
+                var go = _gameObject.transform.GetChild(i).gameObject;
+                if (keep.Contains(go)) list.Add(go);
+            }
+            _temporalChildContent = list.Count == 0 ? null : list.ToArray();
+            if (_temporalChildContent != null)
+                for (int i = _temporalChildContent.Length - 1; i >= 0; i--)
+                    _temporalChildContent[i].transform.SetParent(null);
         }
         public void Destroy(Action<GameObject> _destroyAction)
         {

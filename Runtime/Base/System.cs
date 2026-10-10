@@ -34,6 +34,7 @@ namespace CDSP.Base
             if (Context != null)
             {
                 Debug.LogError($"System {GetType().Name} already has an owner context. Reset with {ownerContext.GetType().Name}");
+                return;
             }
             Context = ownerContext;
         }

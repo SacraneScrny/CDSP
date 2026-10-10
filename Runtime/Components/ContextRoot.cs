@@ -28,9 +28,25 @@ namespace CDSP.Components
         /// <summary>Creates the context, registers it in the tick loop and bootstraps. Runs once per lifetime.</summary>
         public void Awake()
         {
+            if (Context != null)
+            {
+                Debug.LogError($"ContextRoot {GetType().Name} is already awaken (double Awake leaks the previous context).");
+                return;
+            }
             CreateContext();
             EntryPoint.Register(Context);
-            Bootstrap();
+            try
+            {
+                Bootstrap();
+            }
+            catch
+            {
+                EntryPoint.Unregister(Context);
+                var ctx = Context;
+                Context = null;
+                try { ctx.Destroy(); } catch { }
+                throw;
+            }
         }
         /// <summary>Unregisters from the tick loop and destroys the whole tree. Disabling the <see cref="GameObject"/> does not destroy anything.</summary>
         public void OnDestroy()

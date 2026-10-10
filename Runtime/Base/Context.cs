@@ -59,6 +59,7 @@ namespace CDSP.Base
         bool _hasNotAwakenChildren;
         bool _hasNotStartedChildren;
         float _timeScale = 1;
+        GameObject[] _plainTemporal;
 
         protected Context()
         {
@@ -112,7 +113,8 @@ namespace CDSP.Base
                 {
                     if (_childContexts[i].IsDead) continue;
                     if (_childContexts[i].IsStarted) continue;
-                    _childContexts[i].Start();
+                    if (!_childContexts[i].IsAwaken) _childContexts[i].Awake();
+                    if (_childContexts[i].IsAwaken) _childContexts[i].Start();
                 }
             }
         }
@@ -150,9 +152,14 @@ namespace CDSP.Base
             _childContexts.Add(child);
 
             if (prefab != null)
-                child
-                    .CreatePresentation(prefab, Instance?.transform)
-                    .PutTransformInside(this);
+            {
+                child.CreatePresentation(prefab, Instance?.transform);
+                // Deferred parenting: if the parent has no Instance yet (not awaken),
+                // skip PutTransformInside now (it would only log an error) — Awake()
+                // reparents orphaned prefab children once the parent Instance exists.
+                if (Instance != null)
+                    child.PutTransformInside(this);
+            }
             child.SetUpdating(isUpdating)
                 .FillParent(this);
             try
@@ -227,17 +234,25 @@ namespace CDSP.Base
         {
             if (IsDead) return;
             if (_childContexts == null || _childContexts.Count == 0) return;
+            if (Instance == null)
+            {
+                EnsurePresentationExists();
+                ReparentOrphanedChildren();
+            }
 
             for (int i = 0; i < _childContexts.Count; i++)
             {
+                if (_childContexts[i].IsDead) continue;
                 if (_childContexts[i].IsAwaken) continue;
                 _childContexts[i].Awake();
             }
 
             for (int i = 0; i < _childContexts.Count; i++)
             {
+                if (_childContexts[i].IsDead) continue;
                 if (_childContexts[i].IsStarted) continue;
-                _childContexts[i].Start();
+                if (!_childContexts[i].IsAwaken) _childContexts[i].Awake();
+                if (_childContexts[i].IsAwaken) _childContexts[i].Start();
             }
 
             _hasNotAwakenChildren = false;
@@ -388,11 +403,33 @@ namespace CDSP.Base
             bool addComponent = false)
         {
             if (prefab == null) throw new NullReferenceException($"Cannot create presentation {GetType().Name}");
+            var newInstance = _instantiateAction(prefab);
+            newInstance.transform.SetParent(root);
+            newInstance.name = goName ?? prefab.name;
+            try
+            {
+                ValidatePresentation(newInstance, addComponent);
+            }
+            catch
+            {
+                _destroyAction(newInstance);
+                throw;
+            }
             OnPresentationUpdating(Instance);
-            Instance = _instantiateAction(prefab);
-            Instance.transform.SetParent(root);
-            Instance.name = goName ?? prefab.name;
-            OnPresentationUpdated(Instance, addComponent);
+            Instance = newInstance;
+            try
+            {
+                OnPresentationUpdated(Instance, addComponent);
+            }
+            catch
+            {
+                // Fill validated above, so this should not throw; if it does (e.g. custom
+                // addComponent failure), the old view is already gone and logical children
+                // are held in the temporal cache — reattach them to the new instance
+                // to avoid orphaning, then rethrow.
+                RestoreLogicalChildren();
+                throw;
+            }
             return this;
         }
         /// <summary>Creates an empty <see cref="GameObject"/> node (presentation component auto-added). Roots are named <c>{GO}_ROOT</c>.</summary>
@@ -409,10 +446,50 @@ namespace CDSP.Base
         }
         internal virtual void OnPresentationUpdating(GameObject instance)
         {
+            CacheLogicalChildren();
             if (instance != null)
                 _destroyAction(instance);
         }
-        internal virtual void OnPresentationUpdated(GameObject instance, bool addComponent) { }
+        internal virtual void OnPresentationUpdated(GameObject instance, bool addComponent)
+        {
+            RestoreLogicalChildren();
+        }
+        internal virtual void ValidatePresentation(GameObject newInstance, bool addComponent) { }
+
+        void CacheLogicalChildren()
+        {
+            if (Instance == null) { _plainTemporal = null; return; }
+            if (_childContexts == null || _childContexts.Count == 0) { _plainTemporal = null; return; }
+            var keep = new HashSet<GameObject>();
+            foreach (var ch in _childContexts)
+            {
+                if (ch.IsDead) continue;
+                if (ch.Instance == null) continue;
+                keep.Add(ch.Instance);
+            }
+            if (keep.Count == 0) { _plainTemporal = null; return; }
+            var list = new List<GameObject>(keep.Count);
+            int n = Instance.transform.childCount;
+            for (int i = 0; i < n; i++)
+            {
+                var go = Instance.transform.GetChild(i).gameObject;
+                if (keep.Contains(go)) list.Add(go);
+            }
+            _plainTemporal = list.ToArray();
+            for (int i = _plainTemporal.Length - 1; i >= 0; i--)
+                _plainTemporal[i].transform.SetParent(null);
+        }
+        void RestoreLogicalChildren()
+        {
+            if (_plainTemporal == null || _plainTemporal.Length == 0) { _plainTemporal = null; return; }
+            if (Instance == null) { _plainTemporal = null; return; }
+            for (int i = 0; i < _plainTemporal.Length; i++)
+            {
+                _plainTemporal[i].transform.SetParent(Instance.transform);
+                _plainTemporal[i].transform.SetAsLastSibling();
+            }
+            _plainTemporal = null;
+        }
 
         internal void MarkDead()
         {
@@ -444,8 +521,11 @@ namespace CDSP.Base
         {
             if (IsDead) return this;
             if (Parent != null)
+            {
                 Debug.LogError(
                     $"Context {GetType().Name} already has a parent context {Parent.GetType().Name} (reset with {parent.GetType().Name}).");
+                return this;
+            }
             Parent = parent;
             return this;
         }
@@ -538,14 +618,21 @@ namespace CDSP.Base
                 Debug.LogError($"Context {GetType().Name} is already awaken.");
                 return;
             }
+            if (IsDead)
+            {
+                Debug.LogError($"Context {GetType().Name} is dead, cannot awake.");
+                return;
+            }
             
             OnCreate();
             EnsurePresentationExists();
+            ReparentOrphanedChildren();
             OnAwake();
             if (_childContexts != null)
                 for (int i = 0; i < _childContexts?.Count; i++)
                 {
                     var context = _childContexts[i];
+                    if (context.IsDead) continue;
                     if (context.IsAwaken) continue;
                     context.Awake();
                 }
@@ -557,8 +644,22 @@ namespace CDSP.Base
         {
             if (Instance != null) return;
             CreateEmptyPresentation();
-            if (Parent != null)
+            // Deferred parenting: if the logical parent has no Instance yet, skip silently —
+            // the ancestor Awake() ReparentOrphanedChildren() will attach once ready.
+            if (Parent != null && Parent.Instance != null)
                 PutTransformInside(Parent);
+        }
+        void ReparentOrphanedChildren()
+        {
+            if (_childContexts == null || Instance == null) return;
+            for (int i = 0; i < _childContexts.Count; i++)
+            {
+                var child = _childContexts[i];
+                if (child.IsDead) continue;
+                if (child.Instance == null) continue;
+                if (child.Instance.transform.parent != Instance.transform)
+                    child.Instance.transform.SetParent(Instance.transform);
+            }
         }
 
         /// <summary>Starts the node (requires awake first). Awakes any not-awaken children, then starts them.</summary>
@@ -582,14 +683,17 @@ namespace CDSP.Base
                 for (int i = 0; i < _childContexts.Count; i++)
                 {
                     var context = _childContexts[i];
+                    if (context.IsDead) continue;
                     if (context.IsAwaken) continue;
                     context.Awake();
                 }
                 for (int i = 0; i < _childContexts.Count; i++)
                 {
                     var context = _childContexts[i];
+                    if (context.IsDead) continue;
                     if (context.IsStarted) continue;
-                    context.Start();
+                    if (!context.IsAwaken) context.Awake();
+                    if (context.IsAwaken) context.Start();
                 }
             }
 
@@ -609,6 +713,7 @@ namespace CDSP.Base
             deltaTime *= TimeScale;
 
             OnTick(deltaTime);
+            if (IsDead) return;
             if (_childContexts != null)
                 for (int i = 0; i < _childContexts.Count; i++)
                 {
@@ -630,6 +735,7 @@ namespace CDSP.Base
             deltaTime *= TimeScale;
 
             OnFixedTick(deltaTime);
+            if (IsDead) return;
             if (_childContexts != null)
                 for (int i = 0; i < _childContexts.Count; i++)
                 {
@@ -651,6 +757,7 @@ namespace CDSP.Base
             deltaTime *= TimeScale;
 
             OnLateTick(deltaTime);
+            if (IsDead) return;
             if (_childContexts != null)
                 for (int i = 0; i < _childContexts.Count; i++)
                 {
@@ -676,14 +783,28 @@ namespace CDSP.Base
 
             Destroying();
             OnDestroy();
-            Parent?.ChildDestroy(this);
-            if (Parent == null)
+            if (Parent != null)
             {
-                IsDead = true;
+                Parent.ChildDestroy(this);
+            }
+            else
+            {
+                // Roots have no parent to mark them dead: do it directly (keeps
+                // IsUpdating/IsDead consistent with non-roots) and leave the tick
+                // loop so dead roots are not ticked/leaked.
+                MarkDead();
+                try { CDSP.Entry.EntryPoint.Unregister(this); } catch { }
             }
 
             if (Instance != null)
-                _destroyAction(Instance);
+            {
+                try { _destroyAction(Instance); }
+                catch (global::System.Exception e)
+                {
+                    Debug.LogError($"Destroy action failed for {GetType().Name}: {e.Message}");
+                    throw;
+                }
+            }
         }
         internal virtual void Destroying() { }
 
@@ -821,7 +942,22 @@ namespace CDSP.Base
         internal sealed override void OnPresentationUpdating(GameObject instance)
         {
             if (instance != null)
-                _presentationContainer.CacheChildren();
+            {
+                // Cache only logical children (context-owned Instances). View-internal
+                // children stay with the old view and are destroyed with it — otherwise
+                // hot-swaps accumulate stale internals in the new view.
+                var keep = new HashSet<GameObject>();
+                if (_childContexts != null && _childContexts.Count > 0)
+                {
+                    foreach (var ch in _childContexts)
+                    {
+                        if (ch.IsDead) continue;
+                        if (ch.Instance == null) continue;
+                        keep.Add(ch.Instance);
+                    }
+                }
+                _presentationContainer.CacheChildren(keep);
+            }
             var old = _presentationContainer.Presentation;
             bool oldAwake = old != null && old.IsAwaken;
             _presentationContainer.BeginSwap();
@@ -842,6 +978,11 @@ namespace CDSP.Base
                 OnPresentationDestroy(old);
                 System.OnPresentationDestroy(old);
             }
+        }
+        internal sealed override void ValidatePresentation(GameObject newInstance, bool addComponent)
+        {
+            if (!_presentationContainer.CanFill(newInstance, addComponent))
+                throw new NullReferenceException($"Presentation {newInstance.name} doesn't have a Presentation component. {typeof(TPresentation).Name}");
         }
         internal sealed override void OnPresentationUpdated(GameObject instance, bool addComponent)
         {

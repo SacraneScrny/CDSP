@@ -68,10 +68,24 @@ namespace CDSP.Entry
             if (!IsUpdateTick) return;
             var deltaTime = Mathf.Min(Time.deltaTime, DELTATIME_MAX);
 
-            for (int i = 0; i < EntryPoint.MainContextsList.Count; i++)
+            // Mutation-tolerant forward iteration WITHOUT per-frame allocation.
+            // Roots may register/unregister during ticks (e.g. a system unregisters
+            // its own root). Naive `for (i < Count)` skips the next root after a removal
+            // (indices shift left). A `new List<>(...)` snapshot would fix it but allocates
+            // 2 objects x 3 passes per frame — avoidable GC pressure in the hot loop.
+            // New roots appended during the pass are deferred to the next pass; unregistered
+            // roots are not ticked.
+            var list = EntryPoint.MainContextsList;
+            int initialCount = list.Count;
+            int ticked = 0;
+            int i = 0;
+            while (ticked < initialCount && i < list.Count)
             {
-                var context = EntryPoint.MainContextsList[i];
+                var context = list[i];
                 context.Tick(deltaTime);
+                ticked++;
+                if (i < list.Count && ReferenceEquals(list[i], context))
+                    i++;
             }
         }
         static void FixedTick()
@@ -80,10 +94,17 @@ namespace CDSP.Entry
             if (!IsUpdateFixedTick) return;
             var deltaTime = Mathf.Min(Time.fixedDeltaTime, DELTATIME_MAX);
 
-            for (int i = 0; i < EntryPoint.MainContextsList.Count; i++)
+            var list = EntryPoint.MainContextsList;
+            int initialCount = list.Count;
+            int ticked = 0;
+            int i = 0;
+            while (ticked < initialCount && i < list.Count)
             {
-                var context = EntryPoint.MainContextsList[i];
+                var context = list[i];
                 context.FixedTick(deltaTime);
+                ticked++;
+                if (i < list.Count && ReferenceEquals(list[i], context))
+                    i++;
             }
         }
         static void LateTick()
@@ -92,10 +113,17 @@ namespace CDSP.Entry
             if (!IsUpdateLateTick) return;
             var deltaTime = Mathf.Min(Time.deltaTime, DELTATIME_MAX);
 
-            for (int i = 0; i < EntryPoint.MainContextsList.Count; i++)
+            var list = EntryPoint.MainContextsList;
+            int initialCount = list.Count;
+            int ticked = 0;
+            int i = 0;
+            while (ticked < initialCount && i < list.Count)
             {
-                var context = EntryPoint.MainContextsList[i];
+                var context = list[i];
                 context.LateTick(deltaTime);
+                ticked++;
+                if (i < list.Count && ReferenceEquals(list[i], context))
+                    i++;
             }
         }
 
