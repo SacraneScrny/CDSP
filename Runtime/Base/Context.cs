@@ -151,22 +151,22 @@ namespace CDSP.Base
             _childContexts ??= new();
             _childContexts.Add(child);
 
-            if (prefab != null)
-            {
-                child.CreatePresentation(prefab, Instance?.transform);
-                if (Instance != null)
-                    child.PutTransformInside(this);
-            }
-            child.SetUpdating(isUpdating)
-                .FillParent(this);
             try
             {
+                if (prefab != null)
+                {
+                    child.CreatePresentation(prefab, Instance?.transform);
+                    if (Instance != null)
+                        child.PutTransformInside(this);
+                }
+                child.SetUpdating(isUpdating)
+                    .FillParent(this);
                 init?.Invoke(child);
             }
             catch
             {
                 _childContexts?.Remove(child);
-                child.Destroy();
+                try { child.Destroy(); } catch { }
                 throw;
             }
 
@@ -445,7 +445,7 @@ namespace CDSP.Base
             }
             catch
             {
-                RestoreLogicalChildren();
+                RestoreAfterFailedSwap();
                 throw;
             }
             return this;
@@ -794,34 +794,33 @@ namespace CDSP.Base
         public void Destroy()
         {
             if (IsDead) return;
-            if (_childContexts != null)
-                for (int i = _childContexts.Count - 1; i >= 0; i--)
-                {
-                    var context = _childContexts[i];
-                    context.Destroy();
-                }
+            try
+            {
+                if (_childContexts != null)
+                    for (int i = _childContexts.Count - 1; i >= 0; i--)
+                    {
+                        var context = _childContexts[i];
+                        context.Destroy();
+                    }
 
-            Destroying();
-            OnDestroy();
-            if (Parent != null)
-            {
-                Parent.ChildDestroy(this);
+                Destroying();
+                OnDestroy();
             }
-            else
+            finally
             {
-                MarkDead();
-                try { CDSP.Entry.EntryPoint.Unregister(this); } catch { }
+                if (Parent != null)
+                {
+                    Parent.ChildDestroy(this);
+                }
+                else
+                {
+                    MarkDead();
+                    try { CDSP.Entry.EntryPoint.Unregister(this); } catch { }
+                }
             }
 
             if (Instance != null)
-            {
-                try { _destroyAction(Instance); }
-                catch (global::System.Exception e)
-                {
-                    Debug.LogError($"Destroy action failed for {GetType().Name}: {e.Message}");
-                    throw;
-                }
-            }
+                _destroyAction(Instance);
         }
         internal virtual void Destroying() { }
 
@@ -909,8 +908,8 @@ namespace CDSP.Base
         
         internal override void Destroying()
         {
-            System.Destroy();
-            Domain.Destroy();
+            try { System.Destroy(); }
+            finally { Domain.Destroy(); }
         }
     }
     
@@ -1007,14 +1006,17 @@ namespace CDSP.Base
         
         internal override void Destroying()
         {
-            base.Destroying();
-            var pres = Presentation;
-            pres?.InternalDispose();
-            _presentationContainer.Reset();
-            if (pres != null && pres.IsAwaken)
+            try { base.Destroying(); }
+            finally
             {
-                OnPresentationDestroy(pres);
-                System.OnPresentationDestroy(pres);
+                var pres = Presentation;
+                pres?.InternalDispose();
+                _presentationContainer.Reset();
+                if (pres != null && pres.IsAwaken)
+                {
+                    OnPresentationDestroy(pres);
+                    System.OnPresentationDestroy(pres);
+                }
             }
         }
     }
@@ -1050,8 +1052,8 @@ namespace CDSP.Base
         
         internal override void Destroying()
         {
-            base.Destroying();
-            ClearEvents();
+            try { base.Destroying(); }
+            finally { ClearEvents(); }
         }
     }
 }

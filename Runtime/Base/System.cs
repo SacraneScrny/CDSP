@@ -145,12 +145,18 @@ namespace CDSP.Base
 
         internal void Destroy()
         {
-            OnDestroy();
-            if (_disposables != null)
-                foreach (var d in _disposables)
-                    d?.Dispose();
-            _disposables?.Clear();
-            _disposables = null;
+            try
+            {
+                OnDestroy();
+            }
+            finally
+            {
+                if (_disposables != null)
+                    foreach (var d in _disposables)
+                        d?.Dispose();
+                _disposables?.Clear();
+                _disposables = null;
+            }
         }
         /// <summary>Cleans up system state. Tracked subscriptions are disposed automatically.</summary>
         protected virtual void OnDestroy() { }

@@ -36,21 +36,24 @@ namespace CDSP.Entry
             CleanUp();
 
             var loop = PlayerLoop.GetCurrentPlayerLoop();
-            PlayerLoopHelper.InsertAfter<Update.ScriptRunBehaviourUpdate>(ref loop, new PlayerLoopSystem
+            if (!PlayerLoopHelper.InsertAfter<Update.ScriptRunBehaviourUpdate>(ref loop, new PlayerLoopSystem
             {
                 type = typeof(CDSPUpdateSystem),
                 updateDelegate = Tick
-            });
-            PlayerLoopHelper.InsertAfter<FixedUpdate.ScriptRunBehaviourFixedUpdate>(ref loop, new PlayerLoopSystem
+            }))
+                Debug.LogError("CDSP EntryPointUpdate: failed to inject Update tick (ScriptRunBehaviourUpdate not found).");
+            if (!PlayerLoopHelper.InsertAfter<FixedUpdate.ScriptRunBehaviourFixedUpdate>(ref loop, new PlayerLoopSystem
             {
                 type = typeof(CDSPFixedUpdateSystem),
                 updateDelegate = FixedTick
-            });
-            PlayerLoopHelper.InsertAfter<PreLateUpdate.ScriptRunBehaviourLateUpdate>(ref loop, new PlayerLoopSystem
+            }))
+                Debug.LogError("CDSP EntryPointUpdate: failed to inject Fixed tick (ScriptRunBehaviourFixedUpdate not found).");
+            if (!PlayerLoopHelper.InsertAfter<PreLateUpdate.ScriptRunBehaviourLateUpdate>(ref loop, new PlayerLoopSystem
             {
                 type = typeof(CDSPLateUpdateSystem),
                 updateDelegate = LateTick
-            });
+            }))
+                Debug.LogError("CDSP EntryPointUpdate: failed to inject Late tick (ScriptRunBehaviourLateUpdate not found).");
             PlayerLoop.SetPlayerLoop(loop);
         }
         static void CleanUp()

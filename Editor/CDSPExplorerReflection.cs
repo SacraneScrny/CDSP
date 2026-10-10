@@ -89,8 +89,8 @@ namespace CDSP.Editor
 
         public struct ContextDebugFlags
         {
-            public bool inited;
-            public bool justCreated;
+            public bool notAwaken;
+            public bool notStarted;
             public bool hasDeadChildren;
         }
 
@@ -101,8 +101,8 @@ namespace CDSP.Editor
             try
             {
                 var t = typeof(Context);
-                f.inited = (bool)(t.GetField("_inited", AnyInstance)?.GetValue(ctx) ?? false);
-                f.justCreated = (bool)(t.GetField("_justCreated", AnyInstance)?.GetValue(ctx) ?? false);
+                f.notAwaken = (bool)(t.GetField("_hasNotAwakenChildren", AnyInstance)?.GetValue(ctx) ?? false);
+                f.notStarted = (bool)(t.GetField("_hasNotStartedChildren", AnyInstance)?.GetValue(ctx) ?? false);
                 f.hasDeadChildren = (bool)(t.GetField("_hasDeadChildren", AnyInstance)?.GetValue(ctx) ?? false);
             }
             catch { }

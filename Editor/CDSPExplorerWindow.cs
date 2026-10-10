@@ -629,7 +629,7 @@ namespace CDSP.Editor
             EditorGUILayout.EndHorizontal();
 
             var dbg = CDSPExplorerReflection.GetDebugFlags(ctx);
-            EditorGUILayout.LabelField($"_inited: {dbg.inited}   _justCreated: {dbg.justCreated}   _hasDeadChildren: {dbg.hasDeadChildren}",
+            EditorGUILayout.LabelField($"hold-awake: {(dbg.notAwaken ? "WAIT" : "ok")}   hold-start: {(dbg.notStarted ? "WAIT" : "ok")}   _hasDeadChildren: {dbg.hasDeadChildren}",
                 EditorStyles.miniLabel);
         }
 
