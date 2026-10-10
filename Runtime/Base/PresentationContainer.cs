@@ -13,6 +13,11 @@ namespace CDSP.Base
         public bool HadPreviousAwakenPresentation  { get; private set; }
         public TPresentation Presentation { get; private set; }
         public bool IsValid => Presentation != null;
+
+        /// <summary>True while a hot-swap replacement is in flight (between <see cref="CacheChildren"/>/<see cref="Destroy"/> and <see cref="Fill"/>). Deferred/synchronous <c>OnDestroy</c> of the replaced view must not wipe the pending swap state.</summary>
+        public bool IsSwapping { get; private set; }
+        public void BeginSwap() => IsSwapping = true;
+        public void EndSwap() => IsSwapping = false;
         
         public void Fill(GameObject gameObject, bool addComponent)
         {

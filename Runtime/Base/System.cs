@@ -54,7 +54,7 @@ namespace CDSP.Base
         }
         internal virtual void OnPresentationUpdated(Presentation presentation) { }
 
-        internal void PresentationDestroy(Presentation presentation)
+        internal virtual void PresentationDestroy(Presentation presentation)
         {
             Context.PresentationDestroy(presentation);
             OnPresentationDestroy(presentation);
@@ -214,6 +214,17 @@ namespace CDSP.Base
         internal sealed override void OnPresentationDestroy(Presentation presentation)
         {
             OnPresentationDestroy(presentation as TPresentation);
+        }
+        /// <summary>Fallback for views destroyed outside CDSP (Unity <c>OnDestroy</c>). Skipped for stale views (already replaced by a hot-swap — the old view was notified explicitly) and while a swap is in flight (sync destroy inside the swap action).</summary>
+        internal sealed override void PresentationDestroy(Presentation presentation)
+        {
+            var c = _presentationContainer;
+            if (c != null)
+            {
+                if (c.IsSwapping) return;
+                if (!ReferenceEquals(presentation, c.Presentation)) return;
+            }
+            base.PresentationDestroy(presentation);
         }
         internal sealed override void OnPresentationUpdated(Presentation presentation)
             => OnPresentationUpdated(presentation as TPresentation);

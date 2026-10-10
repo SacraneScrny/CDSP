@@ -387,8 +387,8 @@ namespace CDSP.Base
             string goName = null,
             bool addComponent = false)
         {
-            OnPresentationUpdating(Instance);
             if (prefab == null) throw new NullReferenceException($"Cannot create presentation {GetType().Name}");
+            OnPresentationUpdating(Instance);
             Instance = _instantiateAction(prefab);
             Instance.transform.SetParent(root);
             Instance.name = goName ?? prefab.name;
@@ -804,6 +804,13 @@ namespace CDSP.Base
         
         internal sealed override void OnPresentationDestroy(Presentation presentation)
         {
+            // Fallback for views destroyed outside CDSP (Unity OnDestroy).
+            // Stale views (already replaced by a hot-swap — notified explicitly in
+            // OnPresentationUpdating) and notifications arriving mid-swap (sync destroy
+            // inside the swap action, e.g. DestroyImmediate) must not wipe the pending
+            // swap state (HadPreviousAwakenPresentation + detached children cache).
+            if (_presentationContainer.IsSwapping) return;
+            if (!ReferenceEquals(presentation, _presentationContainer.Presentation)) return;
             Presentation?.InternalDispose();
             _presentationContainer.Reset();
             OnPresentationDestroy(presentation as TPresentation);
@@ -815,7 +822,26 @@ namespace CDSP.Base
         {
             if (instance != null)
                 _presentationContainer.CacheChildren();
-            _presentationContainer.Destroy(_destroyAction);
+            var old = _presentationContainer.Presentation;
+            bool oldAwake = old != null && old.IsAwaken;
+            _presentationContainer.BeginSwap();
+            try
+            {
+                _presentationContainer.Destroy(_destroyAction);
+            }
+            finally
+            {
+                _presentationContainer.EndSwap();
+            }
+            if (oldAwake)
+            {
+                // Deterministic old-view notification at the swap point, independent of
+                // the destroy action: pooling actions never raise Unity OnDestroy, and the
+                // deferred/sync OnDestroy of the replaced view is skipped as stale above.
+                // Order mirrors System.PresentationDestroy: context first, then system.
+                OnPresentationDestroy(old);
+                System.OnPresentationDestroy(old);
+            }
         }
         internal sealed override void OnPresentationUpdated(GameObject instance, bool addComponent)
         {
@@ -832,7 +858,16 @@ namespace CDSP.Base
         internal override void Destroying()
         {
             base.Destroying();
-            Presentation?.InternalDispose();
+            // Deterministic final cleanup: do not rely on the deferred Unity OnDestroy
+            // (it becomes a guarded duplicate, skipped as stale once Reset() runs).
+            var pres = Presentation;
+            pres?.InternalDispose();
+            _presentationContainer.Reset();
+            if (pres != null && pres.IsAwaken)
+            {
+                OnPresentationDestroy(pres);
+                System.OnPresentationDestroy(pres);
+            }
         }
     }
     
