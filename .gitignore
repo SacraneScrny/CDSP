@@ -1,0 +1,9 @@
+# NOTE: *.meta files MUST be committed. UPM packages installed from git are
+# immutable, so Unity cannot generate missing .meta files on import
+# ("has no meta file, but it's in an immutable folder" errors).
+.vs/
+*.csproj
+*.sln
+*.user
+.DS_Store
+Thumbs.db

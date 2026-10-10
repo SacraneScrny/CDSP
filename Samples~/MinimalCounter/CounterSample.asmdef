@@ -1,0 +1,16 @@
+{
+    "name": "CDSP.Samples.MinimalCounter",
+    "rootNamespace": "CDSP.Samples",
+    "references": [
+        "CDSP"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -1,0 +1,24 @@
+{
+    "name": "com.cdsp.sackrany",
+    "displayName": "CDSP — Context / Domain / System / Presentation",
+    "version": "0.1.0",
+    "unity": "2021.3",
+    "description": "Lightweight Unity architecture: tree of contexts with strict Domain / System / Presentation separation, managed lifecycle, ticks, per-branch time scale and per-instance event bus. Zero dependencies.",
+    "keywords": [
+        "architecture",
+        "gameplay",
+        "hierarchy",
+        "state"
+    ],
+    "license": "MIT",
+    "author": {
+        "name": "sackrany"
+    },
+    "samples": [
+        {
+            "displayName": "Minimal Counter",
+            "description": "One Domain / System / Presentation / Context triple spawned from a ContextRoot.",
+            "path": "Samples~/MinimalCounter"
+        }
+    ]
+}
