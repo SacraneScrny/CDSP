@@ -41,7 +41,7 @@ namespace CDSP.Base
                 var anchor = ResolveAnchor();
                 for (int i = 0; i < _temporalChildContent.Length; i++)
                 {
-                    _temporalChildContent[i].transform.SetParent(anchor);
+                    _temporalChildContent[i].transform.SetParent(anchor, false);
                     _temporalChildContent[i].transform.SetAsLastSibling();
                 }
                 _temporalChildContent = null;
@@ -101,7 +101,7 @@ namespace CDSP.Base
                 for (int i = 0; i < n; i++)
                     _temporalChildContent[i] = _gameObject.transform.GetChild(i).gameObject;
                 for (int i = n - 1; i >= 0; i--)
-                    _temporalChildContent[i].transform.SetParent(null);
+                    _temporalChildContent[i].transform.SetParent(null, false);
                 return;
             }
 
@@ -114,7 +114,7 @@ namespace CDSP.Base
             _temporalChildContent = list.Count == 0 ? null : list.ToArray();
             if (_temporalChildContent != null)
                 for (int i = _temporalChildContent.Length - 1; i >= 0; i--)
-                    _temporalChildContent[i].transform.SetParent(null);
+                    _temporalChildContent[i].transform.SetParent(null, false);
         }
         public void Destroy(Action<GameObject> _destroyAction)
         {
@@ -139,7 +139,7 @@ namespace CDSP.Base
                 for (int i = 0; i < _temporalChildContent.Length; i++)
                 {
                     if (_temporalChildContent[i] == null) continue;
-                    _temporalChildContent[i].transform.SetParent(anchor);
+                    _temporalChildContent[i].transform.SetParent(anchor, false);
                     _temporalChildContent[i].transform.SetAsLastSibling();
                 }
             }

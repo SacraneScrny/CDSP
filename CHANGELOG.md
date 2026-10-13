@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Relaxed generic constraints from `where T : Context` to `where T : class`: `GetChild<T>`, `TryGetChild<T>`, `HasChild<T>`, `DestroyChild<T>`, `SpecificChildCount<T>`, `GetChildren<T>`, `Is<T>`, `As<T>`, `IsValid<T>`, `IsSimulationRunning<T>`, `EntryPoint.FindRoot<T>` now accept interfaces implemented by contexts. Creation (`CreateChild<T>`, `ContextRoot<TContext>`) still requires a concrete `Context` with `new()`.
 - `Context.Instance` setter widened from `private` to `internal` so triple contexts can adopt a found view's `GameObject`.
+- All child placement (`CreatePresentation`, `PutTransformInside`, awake fix-up, hot-swap park/reattach, `FindPresentation` adoption) now parents with `worldPositionStays: false`: a child's local transform (scale included) stays as authored instead of being rescaled under a scaled parent.
 
 ## [0.1.0] - 2026-10-10
 

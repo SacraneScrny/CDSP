@@ -68,7 +68,7 @@ GameContext
 └── HUDContext
 ```
 
-Each context owns one `GameObject` (`Context.Instance`). Child instances are parented under their parent's children slot (`Presentation.ChildrenRoot`, defaults to the view root), so the Unity hierarchy mirrors the CDSP tree. Destroying a parent destroys the whole subtree.
+Each context owns one `GameObject` (`Context.Instance`). Child instances are parented under their parent's children slot (`Presentation.ChildrenRoot`, defaults to the view root) with `worldPositionStays: false`, so a child's local transform (scale included) stays as authored and the Unity hierarchy mirrors the CDSP tree. Destroying a parent destroys the whole subtree.
 
 To redirect children into a nested container (e.g. `RootCanvas/Container` instead of `RootCanvas` itself), select the presentation component in the Inspector and press the `Children Root: …` button — a dropdown lists the whole hierarchy of that view, pick the container. Empty means the view root. The choice is stored in the prefab/scene, survives view hot-swap, and applies to creation, `PutTransformInside`, awake fix-up and `FindPresentation` adoption alike.
 

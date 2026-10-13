@@ -407,7 +407,7 @@ namespace CDSP.Base
                 catch { prevParent = null; }
             }
             var newInstance = _instantiateAction(prefab);
-            newInstance.transform.SetParent(root);
+            newInstance.transform.SetParent(root, false);
             newInstance.name = goName ?? prefab.name;
             try
             {
@@ -438,7 +438,7 @@ namespace CDSP.Base
             }
             Instance = newInstance;
             if (prevParent != null)
-                newInstance.transform.SetParent(prevParent);
+                newInstance.transform.SetParent(prevParent, false);
             try
             {
                 OnPresentationUpdated(Instance, addComponent);
@@ -498,7 +498,7 @@ namespace CDSP.Base
             CollectKeptChildren(Instance.transform, keep, list);
             _plainTemporal = list.ToArray();
             for (int i = _plainTemporal.Length - 1; i >= 0; i--)
-                _plainTemporal[i].transform.SetParent(null);
+                _plainTemporal[i].transform.SetParent(null, false);
         }
         static void CollectKeptChildren(Transform root, HashSet<GameObject> keep, List<GameObject> list)
         {
@@ -516,7 +516,7 @@ namespace CDSP.Base
             var anchor = GetChildrenAnchor() ?? Instance.transform;
             for (int i = 0; i < _plainTemporal.Length; i++)
             {
-                _plainTemporal[i].transform.SetParent(anchor);
+                _plainTemporal[i].transform.SetParent(anchor, false);
                 _plainTemporal[i].transform.SetAsLastSibling();
             }
             _plainTemporal = null;
@@ -527,7 +527,7 @@ namespace CDSP.Base
             IsUpdating = false;
             IsDead = true;
         }
-        /// <summary>Reparents only the <see cref="GameObject"/> transform under the parent's children slot. Logical parent, tick ownership and <c>Up{T}</c> chain are unchanged.</summary>
+        /// <summary>Reparents only the <see cref="GameObject"/> transform under the parent's children slot, keeping its local transform (scale included). Logical parent, tick ownership and <c>Up{T}</c> chain are unchanged.</summary>
         public Context PutTransformInside(Context parent)
         {
             if (IsDead) return this;
@@ -538,7 +538,7 @@ namespace CDSP.Base
                 return this;
             }
 
-            Instance.transform.SetParent(parent.GetChildrenAnchor() ?? parent.Instance.transform);
+            Instance.transform.SetParent(parent.GetChildrenAnchor() ?? parent.Instance.transform, false);
             return this;
         }
         /// <summary>Children slot of this node: where logical children are parented. Defaults to the view root; views override it via <see cref="Presentation.ChildrenRoot"/>.</summary>
@@ -692,7 +692,7 @@ namespace CDSP.Base
                 if (child.IsDead) continue;
                 if (child.Instance == null) continue;
                 if (child.Instance.transform.parent != anchor)
-                    child.Instance.transform.SetParent(anchor);
+                    child.Instance.transform.SetParent(anchor, false);
             }
         }
 
@@ -1062,7 +1062,7 @@ namespace CDSP.Base
                 if (!under) continue;
                 parked ??= new List<GameObject>(_childContexts.Count);
                 parked.Add(go);
-                try { go.transform.SetParent(null); }
+                try { go.transform.SetParent(null, false); }
                 catch (global::System.Exception) { parked.Remove(go); }
             }
             return parked;
@@ -1079,7 +1079,7 @@ namespace CDSP.Base
                 if (go == null) continue;
                 try
                 {
-                    go.transform.SetParent(anchor);
+                    go.transform.SetParent(anchor, false);
                     go.transform.SetAsLastSibling();
                 }
                 catch (global::System.Exception e)
