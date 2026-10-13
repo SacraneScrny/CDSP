@@ -12,8 +12,8 @@ namespace CDSP.Entry
         /// <summary>Read-only list of registered root trees.</summary>
         public static IReadOnlyList<Context> MainContextsList => _mainContextsList;
 
-        /// <summary>Nearest live root of type <typeparamref name="T"/>, or null. For things with no natural ancestor (e.g. UI finding the session); prefer <c>Up{T}</c> otherwise.</summary>
-        public static T FindRoot<T>() where T : Context
+        /// <summary>Nearest live root matching <typeparamref name="T"/> (concrete <see cref="Context"/> type or implemented interface), or null. For things with no natural ancestor (e.g. UI finding the session); prefer <c>Up{T}</c> otherwise.</summary>
+        public static T FindRoot<T>() where T : class
         {
             for (int i = 0; i < _mainContextsList.Count; i++)
             {

@@ -33,8 +33,8 @@ namespace CDSP.Base
         /// <summary>True once destroyed. The node is swept from the parent at the end of the tick pass; check this on cached refs.</summary>
         public bool IsDead { get; private set; }
 
-        /// <summary>Owned <see cref="GameObject"/>. Child instances are parented under their parent.</summary>
-        public GameObject Instance { get; private set; }
+        /// <summary>Owned <see cref="GameObject"/>. Child instances are parented under the parent's children slot (<see cref="Presentation.ChildrenRoot"/>, defaults to the view root).</summary>
+        public GameObject Instance { get; internal set; }
         /// <summary>Logical parent. Only the transform can be reparented; this chain never changes.</summary>
         public Context Parent { get; private set; }
         /// <summary>True when this node has no parent.</summary>
@@ -155,7 +155,7 @@ namespace CDSP.Base
             {
                 if (prefab != null)
                 {
-                    child.CreatePresentation(prefab, Instance?.transform);
+                    child.CreatePresentation(prefab, GetChildrenAnchor());
                     if (Instance != null)
                         child.PutTransformInside(this);
                 }
@@ -181,8 +181,8 @@ namespace CDSP.Base
             return child;
         }
 
-        /// <summary>Destroys all live children of type <typeparamref name="T"/>. Returns true if any were destroyed.</summary>
-        public bool DestroyChild<T>() where T : Context
+        /// <summary>Destroys all live children matching <typeparamref name="T"/> (concrete <see cref="Context"/> type or implemented interface). Returns true if any were destroyed.</summary>
+        public bool DestroyChild<T>() where T : class
         {
             if (IsDead) return false;
             if (_childContexts == null || _childContexts.Count == 0) return false;
@@ -256,8 +256,8 @@ namespace CDSP.Base
             _hasNotStartedChildren = false;
         }
 
-        /// <summary>First live child of type <typeparamref name="T"/>, or null. Skips dead children.</summary>
-        public T GetChild<T>() where T : Context
+        /// <summary>First live child matching <typeparamref name="T"/> (concrete <see cref="Context"/> type or implemented interface), or null. Skips dead children.</summary>
+        public T GetChild<T>() where T : class
         {
             if (_childContexts == null || _childContexts.Count == 0) return null;
             for (int i = 0; i < _childContexts.Count; i++)
@@ -278,8 +278,8 @@ namespace CDSP.Base
             if (child == null || child.IsDead) return null;
             return child;
         }
-        /// <summary>Nth live child of type <typeparamref name="T"/>, or null. Skips dead children.</summary>
-        public T GetChild<T>(int num) where T : Context
+        /// <summary>Nth live child matching <typeparamref name="T"/> (concrete <see cref="Context"/> type or implemented interface), or null. Skips dead children.</summary>
+        public T GetChild<T>(int num) where T : class
         {
             if (_childContexts == null || _childContexts.Count == 0) return null;
             if (num < 0) return null;
@@ -298,8 +298,8 @@ namespace CDSP.Base
             return null;
         }
 
-        /// <summary>First live child of type <typeparamref name="T"/>. Silent bool variant of <see cref="GetChild{T}"/>.</summary>
-        public bool TryGetChild<T>(out T child) where T : Context
+        /// <summary>First live child matching <typeparamref name="T"/>. Silent bool variant of <see cref="GetChild{T}"/>.</summary>
+        public bool TryGetChild<T>(out T child) where T : class
         {
             child = GetChild<T>();
             return child != null;
@@ -311,8 +311,8 @@ namespace CDSP.Base
             return child != null;
         }
 
-        /// <summary>True if any live child of type <typeparamref name="T"/> exists.</summary>
-        public bool HasChild<T>() where T : Context => GetChild<T>() != null;
+        /// <summary>True if any live child matching <typeparamref name="T"/> (concrete <see cref="Context"/> type or implemented interface) exists.</summary>
+        public bool HasChild<T>() where T : class => GetChild<T>() != null;
         /// <summary>True if <paramref name="child"/> is a live child of this parent (identity + liveness).</summary>
         public bool HasChild(Context child)
         {
@@ -340,8 +340,8 @@ namespace CDSP.Base
                 return count;
             }
         }
-        /// <summary>Number of live children of type <typeparamref name="T"/>.</summary>
-        public int SpecificChildCount<T>() where T : Context
+        /// <summary>Number of live children matching <typeparamref name="T"/> (concrete <see cref="Context"/> type or implemented interface).</summary>
+        public int SpecificChildCount<T>() where T : class
         {
             if (_childContexts == null) return 0;
             int count = 0;
@@ -351,8 +351,8 @@ namespace CDSP.Base
             return count;
         }
 
-        /// <summary>Fills <paramref name="outList"/> with live children of type <typeparamref name="T"/> (clears first).</summary>
-        public void GetChildren<T>(List<T> outList) where T : Context
+        /// <summary>Fills <paramref name="outList"/> with live children matching <typeparamref name="T"/> (concrete <see cref="Context"/> type or implemented interface, clears first).</summary>
+        public void GetChildren<T>(List<T> outList) where T : class
         {
             if (outList == null) return;
             outList.Clear();
@@ -492,23 +492,31 @@ namespace CDSP.Base
             }
             if (keep.Count == 0) { _plainTemporal = null; return; }
             var list = new List<GameObject>(keep.Count);
-            int n = Instance.transform.childCount;
-            for (int i = 0; i < n; i++)
-            {
-                var go = Instance.transform.GetChild(i).gameObject;
-                if (keep.Contains(go)) list.Add(go);
-            }
+            var anchor = GetChildrenAnchor();
+            if (anchor != null)
+                CollectKeptChildren(anchor, keep, list);
+            CollectKeptChildren(Instance.transform, keep, list);
             _plainTemporal = list.ToArray();
             for (int i = _plainTemporal.Length - 1; i >= 0; i--)
                 _plainTemporal[i].transform.SetParent(null);
+        }
+        static void CollectKeptChildren(Transform root, HashSet<GameObject> keep, List<GameObject> list)
+        {
+            int n = root.childCount;
+            for (int i = 0; i < n; i++)
+            {
+                var go = root.GetChild(i).gameObject;
+                if (keep.Contains(go) && !list.Contains(go)) list.Add(go);
+            }
         }
         void RestoreLogicalChildren()
         {
             if (_plainTemporal == null || _plainTemporal.Length == 0) { _plainTemporal = null; return; }
             if (Instance == null) { _plainTemporal = null; return; }
+            var anchor = GetChildrenAnchor() ?? Instance.transform;
             for (int i = 0; i < _plainTemporal.Length; i++)
             {
-                _plainTemporal[i].transform.SetParent(Instance.transform);
+                _plainTemporal[i].transform.SetParent(anchor);
                 _plainTemporal[i].transform.SetAsLastSibling();
             }
             _plainTemporal = null;
@@ -519,7 +527,7 @@ namespace CDSP.Base
             IsUpdating = false;
             IsDead = true;
         }
-        /// <summary>Reparents only the <see cref="GameObject"/> transform. Logical parent, tick ownership and <c>Up{T}</c> chain are unchanged.</summary>
+        /// <summary>Reparents only the <see cref="GameObject"/> transform under the parent's children slot. Logical parent, tick ownership and <c>Up{T}</c> chain are unchanged.</summary>
         public Context PutTransformInside(Context parent)
         {
             if (IsDead) return this;
@@ -530,8 +538,13 @@ namespace CDSP.Base
                 return this;
             }
 
-            Instance.transform.SetParent(parent.Instance.transform);
+            Instance.transform.SetParent(parent.GetChildrenAnchor() ?? parent.Instance.transform);
             return this;
+        }
+        /// <summary>Children slot of this node: where logical children are parented. Defaults to the view root; views override it via <see cref="Presentation.ChildrenRoot"/>.</summary>
+        internal virtual Transform GetChildrenAnchor()
+        {
+            return Instance != null ? Instance.transform : null;
         }
         /// <summary>Pauses (<c>false</c>) or resumes (<c>true</c>) this subtree. State is kept; <c>Destroy</c> is permanent. Fluent.</summary>
         public Context SetUpdating(bool active)
@@ -553,12 +566,12 @@ namespace CDSP.Base
             return this;
         }
 
-        /// <summary>Null-if-dead checked cast to <typeparamref name="T"/>.</summary>
-        public T IsValid<T>() where T : Context => IsDead ? null : this as T;
-        /// <summary>Type check.</summary>
-        public bool Is<T>() where T : Context => this is T;
+        /// <summary>Null-if-dead checked cast to <typeparamref name="T"/> (concrete <see cref="Context"/> type or implemented interface).</summary>
+        public T IsValid<T>() where T : class => IsDead ? null : this as T;
+        /// <summary>Type check (concrete <see cref="Context"/> type or implemented interface).</summary>
+        public bool Is<T>() where T : class => this is T;
         /// <summary>Checked cast to <typeparamref name="T"/> (logs an error and returns null on mismatch).</summary>
-        public T As<T>() where T : Context
+        public T As<T>() where T : class
         {
             if (this is not T)
             {
@@ -607,9 +620,9 @@ namespace CDSP.Base
             return false;
         }
 
-        /// <summary>True while the chain from the nearest live <typeparamref name="TContext"/> scope up to the root is updating. Answers "is the scope running up there", not "am I paused".</summary>
-        public bool IsSimulationRunning<TContext>() where TContext : Context
-            => TryUp(out TContext context) && IsSimulationRunning(context);
+        /// <summary>True while the chain from the nearest live <typeparamref name="TContext"/> scope (concrete <see cref="Context"/> type or implemented interface) up to the root is updating. Answers "is the scope running up there", not "am I paused".</summary>
+        public bool IsSimulationRunning<TContext>() where TContext : class
+            => TryUp(out TContext context) && IsSimulationRunning(context as Context);
         /// <summary>True while the whole chain from <paramref name="from"/> (default: this) up to the root is updating.</summary>
         public bool IsSimulationRunning(Context from = null)
         {
@@ -672,13 +685,14 @@ namespace CDSP.Base
         void ReparentOrphanedChildren()
         {
             if (_childContexts == null || Instance == null) return;
+            var anchor = GetChildrenAnchor() ?? Instance.transform;
             for (int i = 0; i < _childContexts.Count; i++)
             {
                 var child = _childContexts[i];
                 if (child.IsDead) continue;
                 if (child.Instance == null) continue;
-                if (child.Instance.transform.parent != Instance.transform)
-                    child.Instance.transform.SetParent(Instance.transform);
+                if (child.Instance.transform.parent != anchor)
+                    child.Instance.transform.SetParent(anchor);
             }
         }
 
@@ -938,7 +952,160 @@ namespace CDSP.Base
             
             System.Initialize(Domain, _presentationContainer);
         }
-        
+
+        /// <summary>Children slot of this node: the bound view's <see cref="Presentation.ChildrenRoot"/>, view root when unbound.</summary>
+        internal override Transform GetChildrenAnchor()
+        {
+            var p = Presentation;
+            if (p != null && p.ChildrenRoot != null) return p.ChildrenRoot;
+            return Instance != null ? Instance.transform : null;
+        }
+
+        /// <summary>Bound view if already set, else searches own <see cref="Context.Instance"/> (self, then children including inactive) without creating anything. Binds and — when the context already runs — awakes the found view immediately. Null when missing. Use instead of <c>CreatePresentation</c> when the view already lives in the hierarchy (e.g. nested inside another presentation).</summary>
+        public TPresentation FindPresentation(bool includeChildren = true)
+            => FindPresentation(Instance, includeChildren);
+
+        /// <summary>Searches the <paramref name="scope"/> subtree for the view and binds it without instantiating anything (hot-swap parity, but reusing instead of creating). A view found outside the current instance is adopted: its <see cref="GameObject"/> becomes <see cref="Context.Instance"/>, live logical children parked under the previous root are re-attached to it, the previous root is released via the destroy action (the searched scope itself is never destroyed). Ownership transfers — destroying the context later releases the adopted root like a created one. A failed release aborts loudly and keeps the previous root. State is untouched and null is returned when missing.</summary>
+        /// <param name="alignTransform">When true (default), the adopted root is parented under the logical parent when ready, so the Unity hierarchy mirrors the tree. Pass false to keep the found placement as is (breaks mirroring).</param>
+        public TPresentation FindPresentation(GameObject scope, bool includeChildren = true, bool alignTransform = true)
+        {
+            if (IsDead) return null;
+            var bound = _presentationContainer.Presentation;
+            if (bound != null) return bound;
+            if (scope == null) return null;
+            var found = _presentationContainer.FindIn(scope, includeChildren);
+            if (found == null) return null;
+            AdoptFoundPresentation(scope, found, alignTransform);
+            return _presentationContainer.Presentation;
+        }
+
+        /// <summary>Silent bool variant of <see cref="FindPresentation(bool)"/>.</summary>
+        public bool TryFindPresentation(out TPresentation presentation, bool includeChildren = true)
+        {
+            presentation = FindPresentation(includeChildren);
+            return presentation != null;
+        }
+
+        /// <summary>Silent bool variant of <see cref="FindPresentation(GameObject, bool, bool)"/>.</summary>
+        public bool TryFindPresentation(GameObject scope, out TPresentation presentation, bool includeChildren = true, bool alignTransform = true)
+        {
+            presentation = FindPresentation(scope, includeChildren, alignTransform);
+            return presentation != null;
+        }
+
+        void AdoptFoundPresentation(GameObject scope, TPresentation found, bool alignTransform)
+        {
+            var foundGO = found.gameObject;
+            if (found.System != null && !ReferenceEquals(found.System, System))
+            {
+                Debug.LogError(
+                    $"FindPresentation: {typeof(TPresentation).Name} on {foundGO.name} is already owned by {found.System.GetType().Name}. Binding it to {GetType().Name} steals the view.");
+            }
+            bool adopted = false;
+            List<GameObject> parked = null;
+            if (Instance == null)
+            {
+                Instance = foundGO;
+                adopted = true;
+            }
+            else if (Instance != foundGO)
+            {
+                bool nested = false;
+                try { nested = foundGO.transform.IsChildOf(Instance.transform); }
+                catch (global::System.Exception) { nested = false; }
+                if (!nested)
+                {
+                    var prev = Instance;
+                    parked = DetachLogicalChildren(prev);
+                    try
+                    {
+                        if (prev != null && prev != scope)
+                            _destroyAction(prev);
+                    }
+                    catch
+                    {
+                        ReattachParkedChildren(parked, prev);
+                        throw;
+                    }
+                    Instance = foundGO;
+                    adopted = true;
+                }
+            }
+            if (adopted && alignTransform)
+                AlignInstanceWithParent();
+            _presentationContainer.FillExisting(Instance, found);
+            if (adopted && parked != null)
+                ReattachParkedChildren(parked, Instance);
+            if (IsAwaken && !found.IsAwaken)
+            {
+                found.PresentationAwake(System);
+                if (IsStarted && !found.IsStarted)
+                    found.PresentationStart();
+                System.OnPresentationUpdated(found);
+            }
+        }
+
+        List<GameObject> DetachLogicalChildren(GameObject prev)
+        {
+            if (_childContexts == null || _childContexts.Count == 0) return null;
+            if (prev == null) return null;
+            List<GameObject> parked = null;
+            for (int i = 0; i < _childContexts.Count; i++)
+            {
+                var ch = _childContexts[i];
+                if (ch.IsDead) continue;
+                var go = ch.Instance;
+                if (go == null || go == prev) continue;
+                bool under = false;
+                try { under = go.transform.parent == prev.transform || go.transform.IsChildOf(prev.transform); }
+                catch (global::System.Exception) { under = false; }
+                if (!under) continue;
+                parked ??= new List<GameObject>(_childContexts.Count);
+                parked.Add(go);
+                try { go.transform.SetParent(null); }
+                catch (global::System.Exception) { parked.Remove(go); }
+            }
+            return parked;
+        }
+
+        void ReattachParkedChildren(List<GameObject> parked, GameObject root)
+        {
+            if (parked == null || parked.Count == 0) return;
+            if (root == null) return;
+            var anchor = GetChildrenAnchor() ?? root.transform;
+            for (int i = 0; i < parked.Count; i++)
+            {
+                var go = parked[i];
+                if (go == null) continue;
+                try
+                {
+                    go.transform.SetParent(anchor);
+                    go.transform.SetAsLastSibling();
+                }
+                catch (global::System.Exception e)
+                {
+                    Debug.LogError($"FindPresentation could not re-attach {go.name} under {root.name}: {e.Message}");
+                }
+            }
+        }
+
+        void AlignInstanceWithParent()
+        {
+            var par = Parent;
+            if (par == null || par.Instance == null) return;
+            if (Instance == null || Instance == par.Instance) return;
+            try
+            {
+                var anchor = par.GetChildrenAnchor() ?? par.Instance.transform;
+                if (Instance.transform.parent != anchor)
+                    PutTransformInside(par);
+            }
+            catch (global::System.Exception e)
+            {
+                Debug.LogError($"FindPresentation could not align {GetType().Name} under {par.GetType().Name}: {e.Message}");
+            }
+        }
+
         internal sealed override void OnPresentationDestroy(Presentation presentation)
         {
             if (_presentationContainer.IsSwapping) return;

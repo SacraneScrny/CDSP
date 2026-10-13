@@ -35,17 +35,33 @@ namespace CDSP.Base
 
             Presentation.ResetPresentation();
 
-            if (_temporalChildContent != null 
+            if (_temporalChildContent != null
                 && _temporalChildContent.Length > 0)
             {
+                var anchor = ResolveAnchor();
                 for (int i = 0; i < _temporalChildContent.Length; i++)
                 {
-                    _temporalChildContent[i].transform.SetParent(gameObject.transform);
+                    _temporalChildContent[i].transform.SetParent(anchor);
                     _temporalChildContent[i].transform.SetAsLastSibling();
                 }
                 _temporalChildContent = null;
             }
             HadPreviousAwakenPresentation = false;
+        }
+        Transform ResolveAnchor()
+        {
+            if (Presentation != null && Presentation.ChildrenRoot != null)
+                return Presentation.ChildrenRoot;
+            return _gameObject.transform;
+        }
+        static void CollectKeptChildren(Transform root, HashSet<GameObject> keep, List<GameObject> list)
+        {
+            int n = root.childCount;
+            for (int i = 0; i < n; i++)
+            {
+                var go = root.GetChild(i).gameObject;
+                if (keep.Contains(go) && !list.Contains(go)) list.Add(go);
+            }
         }
         public bool CanFill(GameObject gameObject, bool addComponent)
         {
@@ -54,6 +70,24 @@ namespace CDSP.Base
             if (gameObject.GetComponent<TPresentation>() != null) return true;
             if (gameObject.GetComponentInChildren<TPresentation>() != null) return true;
             return false;
+        }
+        public TPresentation FindIn(GameObject root, bool includeChildren)
+        {
+            if (root == null) return null;
+            var self = root.GetComponent<TPresentation>();
+            if (self != null) return self;
+            if (includeChildren) return root.GetComponentInChildren<TPresentation>(true);
+            return null;
+        }
+        public void FillExisting(GameObject owner, TPresentation existing)
+        {
+            if (owner == null) throw new NullReferenceException($"Cannot bind presentation {typeof(TPresentation).Name} to null owner.");
+            if (existing == null) throw new NullReferenceException($"Cannot bind null presentation {typeof(TPresentation).Name} to {owner.name}.");
+            _gameObject = owner;
+            Presentation = existing;
+            Presentation.ResetPresentation();
+            _temporalChildContent = null;
+            HadPreviousAwakenPresentation = false;
         }
         public void CacheChildren(HashSet<GameObject> keep = null)
         {
@@ -73,12 +107,10 @@ namespace CDSP.Base
 
             if (keep.Count == 0) { _temporalChildContent = null; return; }
             var list = new List<GameObject>(keep.Count);
-            int m = _gameObject.transform.childCount;
-            for (int i = 0; i < m; i++)
-            {
-                var go = _gameObject.transform.GetChild(i).gameObject;
-                if (keep.Contains(go)) list.Add(go);
-            }
+            var anchor = ResolveAnchor();
+            if (anchor != null)
+                CollectKeptChildren(anchor, keep, list);
+            CollectKeptChildren(_gameObject.transform, keep, list);
             _temporalChildContent = list.Count == 0 ? null : list.ToArray();
             if (_temporalChildContent != null)
                 for (int i = _temporalChildContent.Length - 1; i >= 0; i--)
@@ -102,12 +134,15 @@ namespace CDSP.Base
             }
 
             if (_gameObject != null)
+            {
+                var anchor = ResolveAnchor();
                 for (int i = 0; i < _temporalChildContent.Length; i++)
                 {
                     if (_temporalChildContent[i] == null) continue;
-                    _temporalChildContent[i].transform.SetParent(_gameObject.transform);
+                    _temporalChildContent[i].transform.SetParent(anchor);
                     _temporalChildContent[i].transform.SetAsLastSibling();
                 }
+            }
             _temporalChildContent = null;
         }
 

@@ -68,7 +68,9 @@ GameContext
 └── HUDContext
 ```
 
-Each context owns one `GameObject` (`Context.Instance`). Child instances are parented under their parent, so the Unity hierarchy mirrors the CDSP tree. Destroying a parent destroys the whole subtree.
+Each context owns one `GameObject` (`Context.Instance`). Child instances are parented under their parent's children slot (`Presentation.ChildrenRoot`, defaults to the view root), so the Unity hierarchy mirrors the CDSP tree. Destroying a parent destroys the whole subtree.
+
+To redirect children into a nested container (e.g. `RootCanvas/Container` instead of `RootCanvas` itself), select the presentation component in the Inspector and press the `Children Root: …` button — a dropdown lists the whole hierarchy of that view, pick the container. Empty means the view root. The choice is stored in the prefab/scene, survives view hot-swap, and applies to creation, `PutTransformInside`, awake fix-up and `FindPresentation` adoption alike.
 
 ---
 
@@ -304,6 +306,8 @@ Context.GetChildren<EnemyContext>(reusableList); // fills, clears first
 
 Note: `GetChild(int)` / `DestroyChild(int)` use the raw internal-list index (which may briefly contain not-yet-swept dead entries until the end of the tick pass), while `ChildCount` counts only live children. Take the index and the lookup from the same raw order — don't mix a `0..ChildCount` range with the raw-index lookup.
 
+The generic lookups accept concrete context types **or interfaces** implemented by contexts: `GetChild<IDamageable>()`, `HasChild<IDamageable>()`, `DestroyChild<IDamageable>()`, `GetChildren<IDamageable>(list)`, `SpecificChildCount<IDamageable>()`. Same for `Is<T>() / As<T>() / IsValid<T>()`, `Up<T>() / TryUp<T>()`, `IsSimulationRunning<T>()` and `EntryPoint.FindRoot<T>()`. Creation stays concrete (`CreateChild<T>`, `ContextRoot<TContext>` need `new T()`).
+
 Reparenting a whole `GameObject` under another context's `GameObject` (visual only — the logical parent, tick ownership and `Up<T>` chain are unchanged):
 
 ```csharp
@@ -343,6 +347,17 @@ var game = EntryPoint.FindRoot<GameContext>(); // nearest live root of type T, n
 - The view is resolved once per `GameObject`: `GetComponent<TPresentation>()`, then `GetComponentInChildren<TPresentation>()`. Every resolved view is passed through `ResetPresentation()` first, so a pooled/reused component always starts with a clean lifecycle (`IsAwaken/IsStarted == false`, tick flags on, `System == null`); override `OnResetPresentation()` for custom view-state reset.
 - Calling `Context.CreatePresentation(prefab)` again on a live context **hot-swaps** the view: children `GameObject`s are detached, the old view gets `OnDisposing()` and its object released via the context's destroy action (pooling-safe), children are re-attached to the new object, and — if the old view was awake — the new one is awoken/started immediately with `System.OnPresentationUpdated(...)` fired. Plain (non-triple) contexts drop their previous `Instance` through the same destroy action instead of leaking it.
 - React to view swaps in `System.OnPresentationUpdated(view)` / `OnPresentationDestroy(view)`; release view resources in `Presentation.OnDisposing()`. `OnDisposing` fires exactly once per view lifetime (guarded internally, so the deferred Unity `OnDestroy` after a hot-swap does not re-dispose).
+- When the view already exists in the hierarchy (e.g. nested inside another presentation), bind it instead of instantiating:
+
+```csharp
+// In init (before awake): adopt the nested view found under the parent instance.
+var enemy = Context.CreateChild<EnemyContext>(init: c => c.FindPresentation(Context.Instance));
+
+// ...or search own instance later (null when missing, state untouched).
+if (enemy.TryFindPresentation(out var view)) { /* use view */ }
+```
+
+`FindPresentation(scope?)` never instantiates: it searches `scope` (default: own `Instance`, self then children including inactive — so disabled/pooled views are reusable; pass `includeChildren: false` for self-only) and binds the found view (reset via `ResetPresentation()`, so reuse starts clean). Miss returns `null` and touches nothing. A view found outside the current instance is adopted — its `GameObject` becomes `Instance`, live logical children parked under the previous root are re-attached to it (hot-swap parity), the previous root is released via the destroy action (the searched scope itself is never destroyed), and the adopted root is parented under the logical parent when ready (pass `alignTransform: false` to keep the found placement as is — breaks hierarchy mirroring). Ownership transfers: destroying the context later releases the adopted root like a created one (customize via `SetDestroyAction` for pooling). A failed release aborts loudly and keeps the previous root. If the context already runs, the late-bound view is awoken/started immediately with `System.OnPresentationUpdated(...)` fired. Binding a view already owned by another system logs an error.
 - If the view's `GameObject` is destroyed from outside CDSP (a contract violation — see rule 4), Unity's `Presentation.OnDestroy` still notifies the context and system through the same `OnPresentationDestroy` path so subscriptions and pooled state don't leak. User code must keep assuming non-null: the resulting `NullReferenceException` on next access is the intended loud signal, not something to guard against.
 
 ---
@@ -454,10 +469,13 @@ Context.StartAllChildren();
 // Remove
 Context.Destroy(); / DestroyChild(ref|T|index);
 
-// Read the tree
+// Read the tree (T = concrete context or implemented interface)
 Context.GetChild<T>(); / GetChild<T>(n); / GetChild(i);
 Context.TryGetChild<T>(out var c); / HasChild<T>(); / HasChild(ref);
 Context.ChildCount; / SpecificChildCount<T>(); / GetChildren<T>(list);
+
+// Bind an existing view instead of instantiating (null when missing)
+Context.FindPresentation(scope?); / TryFindPresentation(out var v);
 
 // State & placement
 Context.SetUpdating(bool);  Context.TimeScale; // default 1, min Epsilon
