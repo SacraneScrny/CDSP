@@ -1,0 +1,8 @@
+using CDSP.Base;
+
+namespace ${NAMESPACE}
+{
+    public class $FEATURE$Domain : Domain
+    {
+    }
+}

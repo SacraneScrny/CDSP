@@ -1,0 +1,20 @@
+using CDSP.Base;
+
+namespace ${NAMESPACE}
+{
+    public class ${NAME}Domain : Domain
+    {
+    }
+
+    public class ${NAME}Presentation : Presentation<${NAME}Logic>
+    {
+    }
+
+    public class ${NAME}Logic : System<${NAME}Domain, ${NAME}Presentation>
+    {
+    }
+
+    public class ${NAME}Context : Context<${NAME}Domain, ${NAME}Logic, ${NAME}Presentation>
+    {
+    }
+}
