@@ -6,15 +6,15 @@ namespace ${NAMESPACE}
     {
     }
 
-    public class ${NAME}Presentation : Presentation<${NAME}Logic>
+    public class ${NAME}Presentation : Presentation<${NAME}System>
     {
     }
 
-    public class ${NAME}Logic : System<${NAME}Domain, ${NAME}Presentation>
+    public class ${NAME}System : System<${NAME}Domain, ${NAME}Presentation>
     {
     }
 
-    public class ${NAME}Context : Context<${NAME}Domain, ${NAME}Logic, ${NAME}Presentation>
+    public class ${NAME}Context : Context<${NAME}Domain, ${NAME}System, ${NAME}Presentation>
     {
     }
 }

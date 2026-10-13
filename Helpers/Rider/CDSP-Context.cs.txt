@@ -2,7 +2,7 @@ using CDSP.Base;
 
 namespace ${NAMESPACE}
 {
-    public class $FEATURE$Context : Context<$FEATURE$Domain, $FEATURE$Logic, $FEATURE$Presentation>
+    public class $FEATURE$Context : Context<$FEATURE$Domain, $FEATURE$System, $FEATURE$Presentation>
     {
     }
 }

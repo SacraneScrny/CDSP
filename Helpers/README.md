@@ -1,7 +1,7 @@
 # CDSP Helpers — создание новой фичи
 
 Три способа получить одну и ту же тройку, как в `Samples~/Calendar`
-(`<Name>Context / <Name>Domain / <Name>Logic / <Name>Presentation` с уже
+(`<Name>Context / <Name>Domain / <Name>System / <Name>Presentation` с уже
 связанными дженериками). Неймспейс везде считается как в Rider:
 **ближайший `.asmdef` `rootNamespace` + относительный путь папки**,
 с фолбэком на путь относительно `Assets/` (так `Calendar` и получает
@@ -28,13 +28,13 @@
 2. Rider: `Settings (Ctrl+Alt+S) → Editor → File Templates → + → File Template`.
 3. `Name: CDSP Feature`, `Extension: cs`, вставьте текст, `Apply`.
 4. Использование: ПКМ по папке → `New → CDSP Feature` → введите `Inventory` →
-   получите `InventoryDomain / InventoryLogic / InventoryPresentation / InventoryContext`
+   получите `InventoryDomain / InventorySystem / InventoryPresentation / InventoryContext`
    в `${NAMESPACE}` этой папки (Rider строит его из `asmdef` + пути сам).
 5. Если нужна раскладка как `Calendar`: выделите файл →
    `Refactor → Move Types Into Matching Files` (получится 4 файла).
 
 Дополнительно, для любителей создавать 4 файла вручную, есть
-`Rider/CDSP-Context.cs.txt`, `CDSP-Domain.cs.txt`, `CDSP-Logic.cs.txt`,
+`Rider/CDSP-Context.cs.txt`, `CDSP-Domain.cs.txt`, `CDSP-System.cs.txt`,
 `CDSP-Presentation.cs.txt`. Там два поля: имя файла (`InventoryContext`…)
 и параметр `FEATURE` (`Inventory` — один на все 4 файла).
 

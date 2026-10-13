@@ -50,7 +50,7 @@ namespace CDSP.Editor
         {
             if (string.IsNullOrWhiteSpace(raw)) return "";
             var name = raw.Trim();
-            foreach (var suffix in new[] { "Context", "Domain", "Logic", "System", "Presentation" })
+            foreach (var suffix in new[] { "Context", "Domain", "System", "Presentation" })
             {
                 if (name.Length > suffix.Length && name.EndsWith(suffix, StringComparison.Ordinal))
                 {
@@ -160,28 +160,28 @@ namespace CDSP.Editor
         internal static string PresentationTemplate(string ns, string name)
         {
             return "using CDSP.Base;\n\nnamespace " + ns + "\n{\n"
-                + "    public class " + name + "Presentation : Presentation<" + name + "Logic>\n    {\n    }\n}\n";
+                + "    public class " + name + "Presentation : Presentation<" + name + "System>\n    {\n    }\n}\n";
         }
 
-        internal static string LogicTemplate(string ns, string name)
+        internal static string SystemTemplate(string ns, string name)
         {
             return "using CDSP.Base;\n\nnamespace " + ns + "\n{\n"
-                + "    public class " + name + "Logic : System<" + name + "Domain, " + name + "Presentation>\n    {\n    }\n}\n";
+                + "    public class " + name + "System : System<" + name + "Domain, " + name + "Presentation>\n    {\n    }\n}\n";
         }
 
         internal static string ContextTemplate(string ns, string name)
         {
             return "using CDSP.Base;\n\nnamespace " + ns + "\n{\n"
-                + "    public class " + name + "Context : Context<" + name + "Domain, " + name + "Logic, " + name + "Presentation>\n    {\n    }\n}\n";
+                + "    public class " + name + "Context : Context<" + name + "Domain, " + name + "System, " + name + "Presentation>\n    {\n    }\n}\n";
         }
 
         internal static string SingleFileTemplate(string ns, string name)
         {
             return "using CDSP.Base;\n\nnamespace " + ns + "\n{\n"
                 + "    public class " + name + "Domain : Domain\n    {\n    }\n\n"
-                + "    public class " + name + "Presentation : Presentation<" + name + "Logic>\n    {\n    }\n\n"
-                + "    public class " + name + "Logic : System<" + name + "Domain, " + name + "Presentation>\n    {\n    }\n\n"
-                + "    public class " + name + "Context : Context<" + name + "Domain, " + name + "Logic, " + name + "Presentation>\n    {\n    }\n}\n";
+                + "    public class " + name + "Presentation : Presentation<" + name + "System>\n    {\n    }\n\n"
+                + "    public class " + name + "System : System<" + name + "Domain, " + name + "Presentation>\n    {\n    }\n\n"
+                + "    public class " + name + "Context : Context<" + name + "Domain, " + name + "System, " + name + "Presentation>\n    {\n    }\n}\n";
         }
 
         internal static bool CreateFeature(string parentAssetFolder, string feature, bool singleFile)
@@ -218,14 +218,14 @@ namespace CDSP.Editor
                 {
                     folder + "/" + feature + "Domain.cs",
                     folder + "/" + feature + "Presentation.cs",
-                    folder + "/" + feature + "Logic.cs",
+                    folder + "/" + feature + "System.cs",
                     folder + "/" + feature + "Context.cs",
                 };
                 bodies = new[]
                 {
                     DomainTemplate(ns, feature),
                     PresentationTemplate(ns, feature),
-                    LogicTemplate(ns, feature),
+                    SystemTemplate(ns, feature),
                     ContextTemplate(ns, feature),
                 };
             }
@@ -293,7 +293,7 @@ namespace CDSP.Editor
             EditorGUILayout.LabelField("Namespace: " + CDSPFeatureCreator.ResolveNamespace(outDir), EditorStyles.miniLabel);
             EditorGUILayout.LabelField(
                 _singleFile ? ("File: " + outDir.TrimEnd('/') + "/" + (clean.Length > 0 ? clean : "...") + ".cs")
-                            : ("Folder: " + outDir + "  (Domain / Presentation / Logic / Context)"),
+                            : ("Folder: " + outDir + "  (Domain / Presentation / System / Context)"),
                 EditorStyles.miniLabel);
 
             EditorGUILayout.Space(8);

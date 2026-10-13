@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create a CDSP feature (Context / Domain / Logic / Presentation triple).
+"""Create a CDSP feature (Context / Domain / System / Presentation triple).
 
 Same output as Samples~/Calendar, with the namespace resolved like Rider
 does it: nearest .asmdef rootNamespace + relative folder path.
@@ -51,7 +51,7 @@ def sanitize_feature(raw):
     """Turn user input into a valid PascalCase-ish C# type prefix."""
     name = (raw or "").strip()
     # Allow typing "InventoryContext" by accident: strip known suffixes.
-    for suffix in ("Context", "Domain", "Logic", "System", "Presentation"):
+    for suffix in ("Context", "Domain", "System", "Presentation"):
         if len(name) > len(suffix) and name.endswith(suffix):
             name = name[: -len(suffix)]
             break
@@ -148,17 +148,17 @@ PRESENTATION_TPL = """using CDSP.Base;
 
 namespace {ns}
 {{
-    public class {name}Presentation : Presentation<{name}Logic>
+    public class {name}Presentation : Presentation<{name}System>
     {{
     }}
 }}
 """
 
-LOGIC_TPL = """using CDSP.Base;
+SYSTEM_TPL = """using CDSP.Base;
 
 namespace {ns}
 {{
-    public class {name}Logic : System<{name}Domain, {name}Presentation>
+    public class {name}System : System<{name}Domain, {name}Presentation>
     {{
     }}
 }}
@@ -168,7 +168,7 @@ CONTEXT_TPL = """using CDSP.Base;
 
 namespace {ns}
 {{
-    public class {name}Context : Context<{name}Domain, {name}Logic, {name}Presentation>
+    public class {name}Context : Context<{name}Domain, {name}System, {name}Presentation>
     {{
     }}
 }}
@@ -182,15 +182,15 @@ namespace {ns}
     {{
     }}
 
-    public class {name}Presentation : Presentation<{name}Logic>
+    public class {name}Presentation : Presentation<{name}System>
     {{
     }}
 
-    public class {name}Logic : System<{name}Domain, {name}Presentation>
+    public class {name}System : System<{name}Domain, {name}Presentation>
     {{
     }}
 
-    public class {name}Context : Context<{name}Domain, {name}Logic, {name}Presentation>
+    public class {name}Context : Context<{name}Domain, {name}System, {name}Presentation>
     {{
     }}
 }}
@@ -204,7 +204,7 @@ def plan_targets(feature, parent_dir, single_file):
     return [
         (out_dir / (feature + "Domain.cs"), DOMAIN_TPL),
         (out_dir / (feature + "Presentation.cs"), PRESENTATION_TPL),
-        (out_dir / (feature + "Logic.cs"), LOGIC_TPL),
+        (out_dir / (feature + "System.cs"), SYSTEM_TPL),
         (out_dir / (feature + "Context.cs"), CONTEXT_TPL),
     ]
 

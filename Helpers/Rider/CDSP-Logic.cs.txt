@@ -1,8 +1,0 @@
-using CDSP.Base;
-
-namespace ${NAMESPACE}
-{
-    public class $FEATURE$Logic : System<$FEATURE$Domain, $FEATURE$Presentation>
-    {
-    }
-}
