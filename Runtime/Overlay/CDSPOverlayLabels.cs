@@ -338,7 +338,7 @@ namespace CDSP.Overlay
                 if (it.depth > maxD) maxD = it.depth;
             }
             float depthRange = Mathf.Max(maxD - minD, 0.001f);
-            Vector2 mouse = new Vector2(Input.mousePosition.x, Screen.height - Input.mousePosition.y);
+            Vector2 mouse = CDSPOverlayInput.MousePositionGUI();
             float mouseNorm = Mathf.Max(Mathf.Max(Screen.width, Screen.height) * 0.5f, 1f);
             float fadeBand = _maxDistance > 0 ? Mathf.Min(10f, _maxDistance * 0.25f) : 0f;
 

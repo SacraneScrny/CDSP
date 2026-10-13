@@ -157,11 +157,11 @@ namespace CDSP.Overlay
 
         void Update()
         {
-            if (Input.GetKeyDown(ToggleKey))
+            if (CDSPOverlayInput.WasPressed(ToggleKey))
                 _explorerVisible = !_explorerVisible;
-            if (Input.GetKeyDown(LabelsKey))
+            if (CDSPOverlayInput.WasPressed(LabelsKey))
                 _labelsWindowVisible = !_labelsWindowVisible;
-            if (Input.GetKeyDown(LabelsQuickKey))
+            if (CDSPOverlayInput.WasPressed(LabelsQuickKey))
                 LabelsEnabled = !LabelsEnabled;
             if (IsFullyOff) return;
 
