@@ -7,6 +7,7 @@ using UnityEngine;
 
 namespace CDSP.Overlay
 {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD || CDSP_OVERLAY_IN_RELEASE
     /// <summary>
     /// Window 2 (F2): screen labels over scene objects + their settings.
     /// Labels are drawn whenever LabelsEnabled, even with both windows closed.
@@ -677,4 +678,14 @@ namespace CDSP.Overlay
 
         #endregion
     }
+
+#else
+
+    // Release stub members live in CDSPOverlay.cs; this partial intentionally adds
+    // nothing so the class still compiles as a whole.
+    public sealed partial class CDSPOverlay
+    {
+    }
+
+#endif
 }

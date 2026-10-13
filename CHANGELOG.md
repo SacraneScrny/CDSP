@@ -10,6 +10,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - `Context<TDomain, TSystem, TPresentation>.FindPresentation(scope?, includeChildren)` / `TryFindPresentation(...)`: bind an already existing view without instantiating (e.g. nested inside another presentation). Adopts the found view's `GameObject` as `Instance`, releases a previous own root via the destroy action, awakes late-bound views immediately when the context already runs.
 - `Presentation.ChildrenRoot`: children slot picked in the Inspector (Editor `Children Root` button with a hierarchy dropdown, stored per prefab/scene, view root when unset). All child placement — creation, `PutTransformInside`, awake fix-up, hot-swap park/reattach, `FindPresentation` adoption — targets the slot.
+- Runtime overlay (`CDSPOverlay`) is stripped from Release builds (Editor and Development Builds unaffected): no windows, labels, input polling or `GameObject`; the public API stays and becomes no-ops (`Instance` is `null`). Define `CDSP_OVERLAY_IN_RELEASE` to force-include it in Release.
+
+### Fixed
+
+- Runtime overlay hotkeys (`F1`/`F2`/`F3`) and label mouse-fade no longer throw `InvalidOperationException` with `Active Input Handling = Input System`: dual-backend input (`CDSPOverlayInput`, legacy guarded + new Input System via reflection), zero new dependencies.
 
 ### Changed
 

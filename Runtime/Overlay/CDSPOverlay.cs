@@ -9,6 +9,7 @@ using UnityEngine;
 
 namespace CDSP.Overlay
 {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD || CDSP_OVERLAY_IN_RELEASE
     /// <summary>
     /// Runtime (build-safe) mirror of CDSPExplorerWindow.
     /// Window 1 (F1): context tree + details. Labels live in CDSPOverlayLabels.cs (partial).
@@ -1310,4 +1311,50 @@ namespace CDSP.Overlay
 
         #endregion
     }
+
+#else
+
+    /// <summary>Release stub: the overlay is stripped from non-development builds (no windows, no input polling, no GameObject). All calls are no-ops and <see cref="Instance"/> is null. Define <c>CDSP_OVERLAY_IN_RELEASE</c> to force-include it.</summary>
+    public sealed partial class CDSPOverlay : MonoBehaviour
+    {
+        /// <summary>Singleton instance (always null in stripped builds).</summary>
+        public static CDSPOverlay Instance => null;
+
+        /// <summary>Key toggling the explorer window (stored, no effect in stripped builds).</summary>
+        [Header("Overlay")]
+        public KeyCode ToggleKey = KeyCode.F1;
+        /// <summary>Show the explorer window on start (no effect in stripped builds).</summary>
+        public bool StartVisible;
+
+        /// <summary>Key toggling the labels settings window (stored, no effect in stripped builds).</summary>
+        public KeyCode LabelsKey = KeyCode.F2;
+        /// <summary>Key toggling world-space labels directly (stored, no effect in stripped builds).</summary>
+        public KeyCode LabelsQuickKey = KeyCode.F3;
+
+        /// <summary>No-op in stripped builds (returns null, creates nothing).</summary>
+        public static CDSPOverlay EnsureExists() => null;
+        /// <summary>No-op in stripped builds.</summary>
+        public static void Show() { }
+        /// <summary>No-op in stripped builds.</summary>
+        public static void Hide() { }
+        /// <summary>No-op in stripped builds.</summary>
+        public static void Toggle() { }
+        /// <summary>No-op in stripped builds.</summary>
+        public void SetVisible(bool v) { }
+        /// <summary>Always false in stripped builds.</summary>
+        public bool IsVisible => false;
+        /// <summary>Always true in stripped builds.</summary>
+        public bool IsFullyOff => true;
+
+        /// <summary>No-op in stripped builds.</summary>
+        public static void ShowLabels() { }
+        /// <summary>No-op in stripped builds.</summary>
+        public static void HideLabels() { }
+        /// <summary>No-op in stripped builds.</summary>
+        public static void ToggleLabels() { }
+        /// <summary>No-op in stripped builds.</summary>
+        public static void ShowLabelsWindow() { }
+    }
+
+#endif
 }

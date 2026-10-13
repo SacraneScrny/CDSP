@@ -445,6 +445,8 @@ CDSPOverlay.ShowLabelsWindow();
 
 The explorer mirrors the Editor window: search, expand/fold, private/hidden-standard-member filters, dead-grace view, per-node pause (`SetUpdating`), `TimeScale` slider, per-pass tick flags, lifecycle buttons, member dumps, event-bus view with clearing, children with per-node destroy, and parent-chain breadcrumbs. Labels render configurable world-space cards (`Box / Name / Domain / System / Presentation` fields) with distance/mouse fade, parent links, and overlap avoidance.
 
+**Builds:** the overlay ships in the Editor and Development Builds only. Release builds strip it — no windows, no labels, no input polling, no `GameObject`; all `CDSPOverlay.*` calls become no-ops and `Instance` is `null`, so no `#if` is needed in user code. To force-include it in a Release build (e.g. for QA), add `CDSP_OVERLAY_IN_RELEASE` to `Player Settings → Scripting Define Symbols`.
+
 ---
 
 ## 12. Rules

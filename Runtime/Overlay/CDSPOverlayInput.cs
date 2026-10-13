@@ -16,6 +16,7 @@ namespace CDSP.Overlay
     /// Input System is reached via reflection only, and the package stays
     /// dependency-free. Missing backends degrade to <c>false</c>, never throw.
     /// </summary>
+#if UNITY_EDITOR || DEVELOPMENT_BUILD || CDSP_OVERLAY_IN_RELEASE
     internal static class CDSPOverlayInput
     {
         static readonly Dictionary<KeyCode, object> _mappedKeys = new Dictionary<KeyCode, object>();
@@ -319,4 +320,15 @@ namespace CDSP.Overlay
             }
         }
     }
+
+#else
+
+    /// <summary>Release stub: overlay is stripped, input is never polled.</summary>
+    internal static class CDSPOverlayInput
+    {
+        public static bool WasPressed(KeyCode key) => false;
+        public static Vector2 MousePositionGUI() => new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
+    }
+
+#endif
 }
