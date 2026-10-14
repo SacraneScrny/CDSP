@@ -171,6 +171,13 @@ namespace CDSP.Base
             _disposables.Add(disposable);
         }
         /// <summary>Tracks several subscriptions so they are disposed with the node.</summary>
+        protected void Track(params IDisposable[] disposables)
+        {
+            if (disposables == null) return;
+            _disposables ??= new List<IDisposable>(disposables.Length);
+            _disposables.AddRange(disposables);
+        }
+        /// <summary>Tracks several subscriptions so they are disposed with the node.</summary>
         protected void Track(IEnumerable<IDisposable> disposables)
         {
             _disposables ??= new List<IDisposable>();
