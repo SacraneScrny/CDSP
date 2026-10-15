@@ -1201,7 +1201,7 @@ namespace CDSP.Base
 
         /// <summary>Subscribes a plain handler. Keep the returned subscription (dispose to unsubscribe) or <see cref="System.Track"/> it. Do not subscribe/unsubscribe from inside a handler for the same key.</summary>
         public Subscription<TEventKey> Subscribe(TEventKey key, Handler handler) => Events.Subscribe(key, handler);
-        /// <summary>Subscribes a typed handler. <see cref="Emit{T}"/> fires typed and plain handlers on the same key.</summary>
+        /// <summary>Subscribes a typed handler.</summary>
         public Subscription<TEventKey> Subscribe<T>(TEventKey key, Handler<T> handler) => Events.Subscribe(key, handler);
         /// <summary>Removes a plain handler.</summary>
         public void Unsubscribe(TEventKey key, Handler handler) => Events.Unsubscribe(key, handler);
@@ -1209,7 +1209,7 @@ namespace CDSP.Base
         public void Unsubscribe<T>(TEventKey key, Handler<T> handler) => Events.Unsubscribe(key, handler);
         /// <summary>Publishes to plain handlers on <paramref name="key"/>.</summary>
         public void Emit(TEventKey key) => Events.Emit(key);
-        /// <summary>Publishes <paramref name="payload"/> to typed handlers and plain handlers on <paramref name="key"/>.</summary>
+        /// <summary>Publishes <paramref name="payload"/> to typed handlers on <paramref name="key"/>.</summary>
         public void Emit<T>(TEventKey key, T payload) => Events.Emit(key, payload);
 
         /// <summary>Clears all subscriptions on this instance.</summary>

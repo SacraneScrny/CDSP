@@ -92,13 +92,12 @@ namespace CDSP.Entities
             if (_map.TryGetValue(key, out var e))
                 e.plain?.Invoke();
         }
-        /// <summary>Fires typed handlers for <typeparamref name="T"/> and plain handlers on <paramref name="key"/>.</summary>
+        /// <summary>Fires typed handlers for <typeparamref name="T"/> on <paramref name="key"/>.</summary>
         public void Emit<T>(TKey key, T payload)
         {
             if (!_map.TryGetValue(key, out var e)) return;
             if (e.typed != null && e.typed.TryGetValue(typeof(T), out var d))
                 ((Handler<T>)d)?.Invoke(payload);
-            e.plain?.Invoke();
         }
 
         /// <summary>Clears all subscriptions for <paramref name="key"/>.</summary>

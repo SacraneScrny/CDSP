@@ -391,7 +391,7 @@ game.ClearEvents();
 
 Semantics:
 
-- `Emit<T>(key, payload)` fires typed `Handler<T>` handlers **and** plain handlers on the same key; plain `Emit(key)` fires only plain handlers.
+- `Emit<T>(key, payload)` fires only typed `Handler<T>` handlers on the same key; plain `Emit(key)` fires only plain handlers.
 - The bus is **per context instance** — publisher and subscriber must use the same instance (usually the nearest common ancestor).
 - The context clears all subscriptions automatically on destroy.
 - `Subscription` is a disposable struct — track it in the system so it dies with the node:

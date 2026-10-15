@@ -15,7 +15,7 @@
 
         /// <summary>Fires plain handlers on <paramref name="key"/>.</summary>
         public void Emit(TKey key);
-        /// <summary>Fires typed handlers for <typeparamref name="T"/> and plain handlers on <paramref name="key"/>.</summary>
+        /// <summary>Fires typed handlers for <typeparamref name="T"/> on <paramref name="key"/>.</summary>
         public void Emit<T>(TKey key, T payload);
 
         /// <summary>Clears all subscriptions for <paramref name="key"/>.</summary>
