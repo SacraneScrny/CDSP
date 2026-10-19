@@ -12,7 +12,7 @@ using UnityEngine;
 
 namespace CDSP.Editor
 {
-    /// <summary>Live tree explorer: state badges, GameObject path, tick flags, Domain/System/Presentation dumps, EventBus subscriptions, children and parent chain. Editor-only, zero build cost.</summary>
+    /// <summary>Live tree explorer: state badges, GameObject path, tick flags, Domain/System/Presentation dumps, EventBus subscriptions, children, shared services and parent chain. Editor-only, zero build cost.</summary>
     public sealed class CDSPExplorerWindow : EditorWindow
     {
         /// <summary>Opens the explorer (<c>CDSP / Explorer</c>, Ctrl+Shift+E).</summary>
@@ -40,6 +40,10 @@ namespace CDSP.Editor
         Vector2 _treeScroll;
         Vector2 _detailsScroll;
         Context _selected;
+        SharedContext _selectedShared;
+
+        static readonly Color SharedRowColor = new Color(0.35f, 0.8f, 1f, 1f);
+        const float SharedPendingAlpha = 0.25f;
 
         readonly HashSet<Context> _expanded = new HashSet<Context>();
         readonly HashSet<Context> _known = new HashSet<Context>();
@@ -97,6 +101,7 @@ namespace CDSP.Editor
             _known.Clear();
             _expanded.Clear();
             _selected = null;
+            _selectedShared = null;
         }
 
         void OnUnitySelectionChanged()
@@ -108,6 +113,7 @@ namespace CDSP.Editor
             if (found != null && found != _selected)
             {
                 _selected = found;
+                _selectedShared = null;
                 Repaint();
             }
         }
@@ -269,6 +275,19 @@ namespace CDSP.Editor
             return false;
         }
 
+        bool Matches(SharedContext sc)
+        {
+            if (string.IsNullOrEmpty(_search)) return true;
+            var s = _search.Trim().ToLowerInvariant();
+            if (sc.GetType().Name.ToLowerInvariant().Contains(s)) return true;
+            if (sc.GetType().FullName != null && sc.GetType().FullName.ToLowerInvariant().Contains(s)) return true;
+            var d = CDSPExplorerReflection.GetSharedDomain(sc);
+            var sys = CDSPExplorerReflection.GetSharedSystem(sc);
+            if (d != null && d.GetType().Name.ToLowerInvariant().Contains(s)) return true;
+            if (sys != null && sys.GetType().Name.ToLowerInvariant().Contains(s)) return true;
+            return false;
+        }
+
         bool SubtreeMatches(Context c, HashSet<Context> guard)
         {
             if (c == null || guard.Contains(c)) return false;
@@ -278,6 +297,14 @@ namespace CDSP.Editor
             if (kids != null)
                 foreach (var k in kids)
                     if (SubtreeMatches(k, new HashSet<Context>(guard))) return true;
+            var shared = CDSPExplorerReflection.GetSharedContexts(c);
+            if (shared != null)
+                foreach (var sc in shared)
+                    if (sc != null && Matches(sc)) return true;
+            var pending = CDSPExplorerReflection.GetPendingSharedContexts(c);
+            if (pending != null)
+                foreach (var sc in pending)
+                    if (sc != null && Matches(sc)) return true;
             return false;
         }
 
@@ -425,7 +452,7 @@ namespace CDSP.Editor
                 if (go != null)
                 {
                     var found = FindByGameObject(go);
-                    if (found != null) _selected = found;
+                    if (found != null) { _selected = found; _selectedShared = null; }
                     else ShowNotification(new GUIContent("GO does not belong to CDSP"));
                 }
             }
@@ -442,7 +469,10 @@ namespace CDSP.Editor
             if (ctx.IsDead && !IsInGrace(ctx, now) && !_showDeadChildren) return;
 
             var kids = GetDisplayChildren(ctx, now);
-            bool hasKids = kids.Count > 0;
+            var shared = CDSPExplorerReflection.GetSharedContexts(ctx);
+            var sharedPending = CDSPExplorerReflection.GetPendingSharedContexts(ctx);
+            bool hasShared = (shared != null && shared.Count > 0) || (sharedPending != null && sharedPending.Count > 0);
+            bool hasKids = kids.Count > 0 || hasShared;
             bool expanded = filtering || _expanded.Contains(ctx);
 
             bool grayed = ctx.IsDead;
@@ -478,6 +508,7 @@ namespace CDSP.Editor
             if (GUILayout.Button(label, EditorStyles.label, GUILayout.ExpandWidth(true)))
             {
                 _selected = ctx;
+                _selectedShared = null;
             }
             DrawPauseButton(ctx);
             DrawSelectButton(ctx);
@@ -497,9 +528,50 @@ namespace CDSP.Editor
             if (flashRem > 0f)
                 DrawFlashBar(rowRect, flashRem, flashColor);
 
-            if (hasKids && (expanded || filtering))
+            if (hasShared && (expanded || filtering))
+            {
+                if (shared != null)
+                    foreach (var sc in shared)
+                    {
+                        if (sc == null) continue;
+                        if (filtering && !Matches(sc)) continue;
+                        DrawSharedRow(sc, depth + 1, false);
+                    }
+                if (sharedPending != null)
+                    foreach (var sc in sharedPending)
+                    {
+                        if (sc == null) continue;
+                        if (filtering && !Matches(sc)) continue;
+                        DrawSharedRow(sc, depth + 1, true);
+                    }
+            }
+            if (kids.Count > 0 && (expanded || filtering))
                 foreach (var k in kids)
                     DrawNode(k, depth + 1, guard, filtering);
+        }
+
+        void DrawSharedRow(SharedContext sc, int depth, bool pending)
+        {
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Space(depth * 14f);
+            GUILayout.Space(16f);
+
+            var oldC = GUI.contentColor;
+            var c = SharedRowColor;
+            if (pending) c.a = SharedPendingAlpha;
+            GUI.contentColor = c;
+
+            string label = $"[S] {sc.GetType().Name}{(pending ? "  (pending)" : "")}";
+            if (GUILayout.Button(label, EditorStyles.label, GUILayout.ExpandWidth(true)))
+            {
+                _selected = null;
+                _selectedShared = sc;
+            }
+            GUI.contentColor = oldC;
+            EditorGUILayout.EndHorizontal();
+
+            if (_selectedShared == sc)
+                EditorGUI.DrawRect(GUILayoutUtility.GetLastRect(), new Color(0.2f, 0.5f, 0.95f, 0.35f));
         }
 
         void SetAllExpanded(bool value)
@@ -515,7 +587,12 @@ namespace CDSP.Editor
         {
             EditorGUILayout.BeginVertical(GUILayout.ExpandWidth(true), GUILayout.ExpandHeight(true));
             _detailsScroll = EditorGUILayout.BeginScrollView(_detailsScroll);
-            if (_selected == null)
+            if (_selectedShared != null && !_selectedShared.IsValid) _selectedShared = null;
+            if (_selectedShared != null)
+            {
+                DrawSharedDetails(_selectedShared);
+            }
+            else if (_selected == null)
             {
                 EditorGUILayout.HelpBox("Select a context on the left.\n○ button — select + ping GameObject.", MessageType.Info);
                 DrawSceneRootsSection();
@@ -552,7 +629,10 @@ namespace CDSP.Editor
                     GUILayout.Label(info, GUILayout.Width(220));
                     EditorGUI.BeginDisabledGroup(c == null);
                     if (GUILayout.Button("→", GUILayout.Width(28)))
+                    {
                         _selected = c;
+                        _selectedShared = null;
+                    }
                     EditorGUI.EndDisabledGroup();
                     EditorGUILayout.EndHorizontal();
                     EditorGUILayout.ObjectField("Prefab", r.Prefab, typeof(GameObject), true);
@@ -583,8 +663,163 @@ namespace CDSP.Editor
             Section(DrawLifecycleButtons, ctx);
             Section(DrawTripleSection, ctx);
             if (CDSPExplorerReflection.GetEventBusInfo(ctx).hasBus) Section(DrawEventsSection, ctx);
+            Section(DrawSharedSection, ctx);
             Section(DrawChildrenSection, ctx);
             Section(DrawBreadcrumb, ctx);
+        }
+
+        void DrawSharedSection(Context ctx)
+        {
+            var live = CDSPExplorerReflection.GetSharedContexts(ctx);
+            var pending = CDSPExplorerReflection.GetPendingSharedContexts(ctx);
+            int n = (live?.Count ?? 0) + (pending?.Count ?? 0);
+            EditorGUILayout.Space(4);
+            EditorGUILayout.LabelField($"Shared services ({n})", EditorStyles.boldLabel);
+            if (n == 0)
+            {
+                EditorGUILayout.LabelField("— no shared services —", EditorStyles.miniLabel);
+                return;
+            }
+            if (live != null)
+                for (int i = 0; i < live.Count; i++)
+                    DrawSharedListRow(live[i], false);
+            if (pending != null)
+                for (int i = 0; i < pending.Count; i++)
+                    DrawSharedListRow(pending[i], true);
+        }
+
+        void DrawSharedListRow(SharedContext sc, bool pending)
+        {
+            if (sc == null) return;
+            EditorGUILayout.BeginHorizontal(EditorStyles.helpBox);
+            var oldC = GUI.contentColor;
+            var c = SharedRowColor;
+            if (pending) c.a = SharedPendingAlpha;
+            GUI.contentColor = c;
+            GUILayout.Label($"[S] {sc.GetType().Name}{(pending ? "  (pending)" : "")}", EditorStyles.miniBoldLabel, GUILayout.ExpandWidth(true));
+            GUI.contentColor = oldC;
+            GUILayout.FlexibleSpace();
+            if (GUILayout.Button("→", GUILayout.Width(28))) { _selected = null; _selectedShared = sc; }
+            EditorGUILayout.EndHorizontal();
+        }
+
+        void DrawSharedDetails(SharedContext sc)
+        {
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Label(sc.GetType().FullName, _titleStyle);
+            GUILayout.FlexibleSpace();
+            EditorGUI.BeginDisabledGroup(sc.Parent == null);
+            if (GUILayout.Button("→ Owner", GUILayout.Width(70)))
+            {
+                _selected = sc.Parent;
+                _selectedShared = null;
+            }
+            EditorGUI.EndDisabledGroup();
+            if (GUILayout.Button("✕", GUILayout.Width(26)))
+                _selectedShared = null;
+            EditorGUILayout.EndHorizontal();
+            DrawSeparator();
+            _sectionIndex = 0;
+
+            SectionShared(DrawSharedBadges, sc);
+            SectionShared(DrawSharedTicks, sc);
+            SectionShared(DrawSharedTriple, sc);
+            SectionShared(DrawSharedLifecycle, sc);
+            if (sc.Parent != null) Section(DrawBreadcrumb, sc.Parent);
+        }
+
+        void SectionShared(Action<SharedContext> draw, SharedContext sc)
+        {
+            InitSectionStyles();
+            var style = (_sectionIndex++ % 2 == 0) ? _sectionEvenStyle : _sectionOddStyle;
+            EditorGUILayout.BeginVertical(style);
+            draw(sc);
+            EditorGUILayout.EndVertical();
+        }
+
+        void DrawSharedBadges(SharedContext sc)
+        {
+            EditorGUILayout.BeginHorizontal();
+            Badge(sc.IsValid ? "ATTACHED" : "DETACHED", sc.IsValid ? new Color(0.2f, 0.5f, 0.25f) : new Color(0.6f, 0.15f, 0.15f));
+            Badge(sc.IsUpdating ? "Active" : "Inactive", sc.IsUpdating ? new Color(0.2f, 0.45f, 0.7f) : Color.gray);
+            Badge(sc.IsAwaken ? "Awake" : "¬Awake", sc.IsAwaken ? new Color(0.25f, 0.5f, 0.25f) : new Color(0.5f, 0.45f, 0.15f));
+            Badge(sc.IsStarted ? "Started" : "¬Started", sc.IsStarted ? new Color(0.25f, 0.5f, 0.25f) : new Color(0.5f, 0.45f, 0.15f));
+            Badge(sc.IsReady ? "Ready" : "¬Ready", sc.IsReady ? new Color(0.3f, 0.6f, 0.3f) : new Color(0.45f, 0.45f, 0.45f));
+            EditorGUILayout.EndHorizontal();
+        }
+
+        void DrawSharedTicks(SharedContext sc)
+        {
+            EditorGUILayout.Space(4);
+            EditorGUILayout.LabelField("Ticks & Activity", EditorStyles.boldLabel);
+            DrawBoolToggleRow("SharedContext.IsUpdating (SetUpdating)", sc.IsUpdating, v =>
+            {
+                if (Application.isPlaying) sc.SetUpdating(v);
+                else CDSPExplorerReflection.TrySetBoolProp(sc, "IsUpdating", v);
+            });
+            float ts = sc.TimeScale;
+            float nts = EditorGUILayout.Slider("SharedContext.TimeScale", ts, 0f, 4f);
+            if (!Mathf.Approximately(nts, ts)) sc.TimeScale = nts;
+            DrawBoolToggleRow("SharedContext.IsUpdateTick", sc.IsUpdateTick, v =>
+                CDSPExplorerReflection.TrySetBoolProp(sc, "IsUpdateTick", v));
+            DrawBoolToggleRow("SharedContext.IsUpdateFixedTick", sc.IsUpdateFixedTick, v =>
+                CDSPExplorerReflection.TrySetBoolProp(sc, "IsUpdateFixedTick", v));
+            DrawBoolToggleRow("SharedContext.IsUpdateLateTick", sc.IsUpdateLateTick, v =>
+                CDSPExplorerReflection.TrySetBoolProp(sc, "IsUpdateLateTick", v));
+
+            var sys = CDSPExplorerReflection.GetSharedSystem(sc);
+            if (sys != null)
+            {
+                EditorGUILayout.Space(2);
+                EditorGUILayout.LabelField($"System: {sys.GetType().Name}", EditorStyles.miniBoldLabel);
+                EditorGUILayout.LabelField(
+                    $"ready {sys.IsReady} · awake {sys.IsAwaken} · started {sys.IsStarted} · active {sys.IsUpdating}",
+                    EditorStyles.miniLabel);
+            }
+        }
+
+        void DrawSharedTriple(SharedContext sc)
+        {
+            EditorGUILayout.Space(4);
+            EditorGUILayout.LabelField("Domain / System (no presentation, no GameObject)", EditorStyles.boldLabel);
+            var d = CDSPExplorerReflection.GetSharedDomain(sc);
+            var sys = CDSPExplorerReflection.GetSharedSystem(sc);
+
+            DrawTripleRow("Domain", d, d != null ? d.GetType().FullName : "null (dataless service?)");
+            DrawTripleRow("System", null, sys != null ? sys.GetType().FullName : "null (logicless service?)");
+
+            if (d != null) DrawDumpFoldout($"Domain fields: {d.GetType().Name}", d);
+            if (sys != null) DrawDumpFoldout($"System fields: {sys.GetType().Name}", sys);
+        }
+
+        void DrawSharedLifecycle(SharedContext sc)
+        {
+            EditorGUILayout.Space(4);
+            EditorGUILayout.LabelField("Lifecycle", EditorStyles.boldLabel);
+            EditorGUILayout.BeginHorizontal();
+            EditorGUI.BeginDisabledGroup(!Application.isPlaying || !sc.IsValid);
+            GUI.backgroundColor = new Color(1f, 0.5f, 0.5f);
+            if (GUILayout.Button("Destroy service"))
+            {
+                if (EditorUtility.DisplayDialog("CDSP",
+                        $"Destroy shared service {sc.GetType().Name} on {sc.Parent?.GetType().Name}?",
+                        "Destroy", "Cancel"))
+                {
+                    try
+                    {
+                        var owner = sc.Parent;
+                        sc.Destroy();
+                        _selectedShared = null;
+                        if (owner != null) _selected = owner;
+                    }
+                    catch (Exception e) { Debug.LogException(e); }
+                }
+            }
+            GUI.backgroundColor = Color.white;
+            EditorGUI.EndDisabledGroup();
+            EditorGUILayout.EndHorizontal();
+            if (!Application.isPlaying)
+                EditorGUILayout.HelpBox("Lifecycle mutations are only available in PlayMode.", MessageType.None);
         }
 
         void Section(Action<Context> draw, Context ctx)
@@ -879,7 +1114,7 @@ namespace CDSP.Editor
                 GUILayout.Label($"{k.GetType().Name}", EditorStyles.miniBoldLabel, GUILayout.Width(200));
                 GUILayout.Label(k.IsDead ? "DEAD" : (k.IsUpdating ? "active" : "off"), EditorStyles.miniLabel, GUILayout.Width(60));
                 GUILayout.FlexibleSpace();
-                if (GUILayout.Button("→", GUILayout.Width(28))) _selected = k;
+                if (GUILayout.Button("→", GUILayout.Width(28))) { _selected = k; _selectedShared = null; }
                 DrawPauseButton(k);
                 DrawSelectButton(k);
                 EditorGUI.BeginDisabledGroup(!Application.isPlaying || k.IsDead);
@@ -916,7 +1151,10 @@ namespace CDSP.Editor
                 if (i > 0) GUILayout.Label("›", GUILayout.Width(14));
                 var c = chain[i];
                 if (GUILayout.Button(c.GetType().Name, EditorStyles.miniButton, GUILayout.MaxWidth(160)))
+                {
                     _selected = c;
+                    _selectedShared = null;
+                }
             }
             EditorGUILayout.EndHorizontal();
         }

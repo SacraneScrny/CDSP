@@ -22,6 +22,49 @@ namespace CDSP.Editor
 
         static FieldInfo ChildField => GetFieldCached(typeof(Context), "_childContexts", ChildFieldCache);
 
+        static readonly Dictionary<Type, FieldInfo> SharedFieldCache = new();
+        static readonly Dictionary<Type, FieldInfo> SharedQueueFieldCache = new();
+
+        static FieldInfo SharedField => GetFieldCached(typeof(Context), "_sharedContexts", SharedFieldCache);
+        static FieldInfo SharedQueueField => GetFieldCached(typeof(Context), "_sharedContextsQueue", SharedQueueFieldCache);
+
+        /// <summary>Live (attached) services of <paramref name="ctx"/>. Detached entries are skipped.</summary>
+        public static List<SharedContext> GetSharedContexts(Context ctx)
+        {
+            if (ctx == null) return null;
+            try
+            {
+                var map = SharedField?.GetValue(ctx) as Dictionary<Type, SharedContext>;
+                if (map == null || map.Count == 0) return new List<SharedContext>();
+                var list = new List<SharedContext>(map.Count);
+                foreach (var kv in map)
+                    if (kv.Value != null && kv.Value.IsValid) list.Add(kv.Value);
+                return list;
+            }
+            catch { return null; }
+        }
+
+        /// <summary>Services created but not registered yet (still in the init queue). Never overlaps with <see cref="GetSharedContexts"/>.</summary>
+        public static List<SharedContext> GetPendingSharedContexts(Context ctx)
+        {
+            if (ctx == null) return null;
+            try
+            {
+                var queue = SharedQueueField?.GetValue(ctx) as List<SharedContext>;
+                if (queue == null || queue.Count == 0) return new List<SharedContext>();
+                var live = GetSharedContexts(ctx);
+                var list = new List<SharedContext>(queue.Count);
+                foreach (var sc in queue)
+                {
+                    if (sc == null || !sc.IsValid) continue;
+                    if (live != null && live.Contains(sc)) continue;
+                    list.Add(sc);
+                }
+                return list;
+            }
+            catch { return null; }
+        }
+
         public static List<Context> GetChildren(Context ctx)
         {
             if (ctx == null) return null;
@@ -67,6 +110,40 @@ namespace CDSP.Editor
                     SystemPropCache[t] = p;
                 }
                 return p?.GetValue(ctx) as CDSP.Base.System;
+            }
+            catch { return null; }
+        }
+
+        /// <summary>Domain of a shared service, or null for dataless services.</summary>
+        public static SharedDomain GetSharedDomain(SharedContext sc)
+        {
+            if (sc == null) return null;
+            try
+            {
+                var t = sc.GetType();
+                if (!DomainPropCache.TryGetValue(t, out var p))
+                {
+                    p = t.GetProperty("Domain", AnyInstance);
+                    DomainPropCache[t] = p;
+                }
+                return p?.GetValue(sc) as SharedDomain;
+            }
+            catch { return null; }
+        }
+
+        /// <summary>System of a shared service, or null for logicless services.</summary>
+        public static SharedSystem GetSharedSystem(SharedContext sc)
+        {
+            if (sc == null) return null;
+            try
+            {
+                var t = sc.GetType();
+                if (!SystemPropCache.TryGetValue(t, out var p))
+                {
+                    p = t.GetProperty("System", AnyInstance);
+                    SystemPropCache[t] = p;
+                }
+                return p?.GetValue(sc) as SharedSystem;
             }
             catch { return null; }
         }
