@@ -54,10 +54,18 @@ namespace CDSP.Base
         internal Func<GameObject, GameObject> _instantiateAction = DefaultActions.InstantiateAction;
         internal Action<GameObject> _destroyAction = Object.Destroy;
 
+        internal Dictionary<Type, SharedContext> _sharedContexts;
+        internal List<SharedContext> _sharedContextsQueue;
         internal List<Context> _childContexts;
+        
         bool _hasDeadChildren;
         bool _hasNotAwakenChildren;
         bool _hasNotStartedChildren;
+        
+        bool _hasDestroyedSharedContexts;
+        bool _hasNotAwakenSharedContexts;
+        bool _hasNotStartedSharedContexts;
+        
         float _timeScale = 1;
         GameObject[] _plainTemporal;
 
@@ -74,6 +82,199 @@ namespace CDSP.Base
         internal virtual void OnPresentationDestroy(Presentation presentation) { }
         #endregion
 
+        #region SHARED
+        void InitializeCreatedSharedContexts()
+        {
+            if (_sharedContextsQueue == null || _sharedContextsQueue.Count == 0) return;
+            while (_hasNotAwakenSharedContexts)
+            {
+                _hasNotAwakenSharedContexts = false;
+                for (int i = 0; i <  _sharedContextsQueue.Count; i++)
+                { 
+                    if (!_sharedContextsQueue[i].IsValid) continue;
+                    if (_sharedContextsQueue[i].IsAwaken) continue;
+                    _sharedContextsQueue[i].Awake();
+                }
+            }
+            while (_hasNotStartedSharedContexts)
+            {
+                _hasNotStartedSharedContexts = false;
+                for (int i = 0; i <  _sharedContextsQueue.Count; i++)
+                {
+                    if (!_sharedContextsQueue[i].IsValid) continue;
+                    if (_sharedContextsQueue[i].IsStarted) continue;
+                    if (!_sharedContextsQueue[i].IsAwaken) _sharedContextsQueue[i].Awake();
+                    if (_sharedContextsQueue[i].IsAwaken) _sharedContextsQueue[i].Start();
+                }
+            }
+
+            _sharedContexts ??= new();
+            foreach (var sc in _sharedContextsQueue)
+                _sharedContexts.Add(sc.GetType(), sc);
+            _sharedContextsQueue.Clear();
+        }
+        void FlushDestroyedSharedContexts()
+        {
+            if (!_hasDestroyedSharedContexts) return;
+            if (_sharedContextsQueue != null)
+                for (int i = _sharedContextsQueue.Count - 1; i >= 0; i--)
+                {
+                    if (!_sharedContextsQueue[i].IsValid) _sharedContextsQueue.RemoveAt(i);
+                }
+
+            bool ok = false;
+            if (_sharedContexts != null)
+                while (!ok)
+                {
+                    ok = true;
+                    foreach (var sc in _sharedContexts)
+                        if (!sc.Value.IsValid)
+                        {
+                            _sharedContexts.Remove(sc.Key);
+                            break;
+                        }
+                }
+
+            _hasDestroyedSharedContexts = false;
+        }
+
+        /// <summary>Nearest live service of type <typeparamref name="T"/> from this scope up to the root (own services first, then ancestors). Logs an error when none is found; skips detached services.</summary>
+        public T Shared<T>() where T : SharedContext
+        {
+            var result = FindShared<T>(out bool foundDead);
+            if (result == null)
+                Debug.LogError($"Context {GetType().Name} does not have a shared context {typeof(T).Name}{(foundDead ? " (Found was dead)" : "")}");
+            return result;
+        }
+        /// <summary>Silent bool variant of <see cref="Shared{T}"/>.</summary>
+        public bool TryShared<T>(out T shared) where T : SharedContext
+        {
+            shared = FindShared<T>(out _);
+            return shared != null;
+        }
+        internal T FindShared<T>(out bool foundDead) where T : SharedContext
+        {
+            foundDead = false;
+            if (_sharedContexts != null && _sharedContexts.TryGetValue(typeof(T), out var value))
+            {
+                if (value.IsValid) return value as T;
+                foundDead = true;
+            }
+            if (Parent != null)
+                return Parent.FindShared<T>(out foundDead);
+            return null;
+        }
+        
+        /// <summary>Attaches a service of type <typeparamref name="T"/> and awakes/starts it synchronously (if this scope already runs). <paramref name="init"/> runs after attach but before awake; a throwing init rolls the service back.</summary>
+        public T CreateSharedImmediate<T>(
+            Action<T> init = null,
+            bool isUpdating = true)
+            where T : SharedContext, new()
+            => _InternalCreateShared<T>(init, isUpdating);
+        /// <summary>Attaches a service of type <typeparamref name="T"/> (deferred by default: awakes at the end of the tick pass). One live instance per type per scope; duplicate creation returns the existing one with a warning.</summary>
+        public T CreateShared<T>(
+            Action<T> init = null,
+            bool isUpdating = true)
+            where T : SharedContext, new()
+            => _InternalCreateShared<T>(init, isUpdating, true, true);
+        internal T _InternalCreateShared<T>(
+            Action<T> init = null,
+            bool isUpdating = true,
+            bool holdStart = false,
+            bool holdAwake = false) 
+            where T : SharedContext, new()
+        {
+            if (IsDead)
+            {
+                Debug.LogError($"Cannot create shared context {GetType().Name} because it is dead.");
+                return null;
+            }
+            if (_sharedContexts != null && _sharedContexts.TryGetValue(typeof(T), out var value))
+            {
+                Debug.LogWarning($"SharedContext {typeof(T).Name} already exists.");
+                return value as T;
+            }
+
+            var inQueue = _sharedContextsQueue?.FirstOrDefault(x => x.GetType() == typeof(T));
+            if (inQueue != null)
+            {
+                Debug.LogWarning($"SharedContext {typeof(T).Name} already exists.");
+                return inQueue as T;
+            }
+
+            var sc = new T();
+            _sharedContextsQueue ??= new();
+            _sharedContextsQueue.Add(sc);
+
+            try 
+            {
+                sc.SetUpdating(isUpdating)
+                    .FillParent(this);
+                init?.Invoke(sc);
+            }
+            catch
+            {
+                _sharedContextsQueue?.Remove(sc);
+                try { sc.Destroy(); } catch { }
+                throw;
+            }
+
+            if (IsAwaken && !holdAwake)
+                sc.Awake();
+            else _hasNotAwakenSharedContexts = true;
+            
+            if (IsStarted && !holdStart && sc.IsAwaken)
+                sc.Start();
+            else _hasNotStartedSharedContexts = true;
+
+            return sc;
+        }
+        
+        internal void SharedContextDestroy(SharedContext sharedContext)
+        {
+            if (sharedContext == null) return;
+            _hasDestroyedSharedContexts = true;
+        }
+        internal void SharedContextDestroyFromInside(SharedContext sharedContext)
+        {
+            _hasDestroyedSharedContexts = true;
+        }
+        
+        /// <summary>Destroys the live service matching <typeparamref name="T"/> on this scope. Returns true if any was destroyed. Swept at the end of the tick pass; check <see cref="SharedContext.IsValid"/> on cached refs.</summary>
+        public bool DestroySharedContext<T>() where T : class
+        {
+            if (IsDead) return false;
+            if (_sharedContexts == null || _sharedContexts.Count == 0) return false;
+            bool result = false;
+            foreach (var sc in _sharedContexts)
+            {
+                if (sc.Value is T)
+                {
+                    if (!sc.Value.IsValid) continue;
+                    sc.Value.Destroy();
+                    SharedContextDestroy(sc.Value);
+                    result = true;
+                    break;
+                }
+            }
+
+            return result;
+        }
+        /// <summary>Destroys a live service by reference. No-op (false) if it is not a live service of this scope.</summary>
+        public bool DestroySharedContext(SharedContext sc)
+        {
+            if (IsDead) return false;
+            if (sc == null) return false;
+            if (!sc.IsValid) return false;
+            if (_sharedContexts == null || _sharedContexts.Count == 0) return false;
+            var deadBody = _sharedContexts.Values.FirstOrDefault(c => c == sc);
+            if (deadBody == null) return false;
+            sc.Destroy();
+            SharedContextDestroy(sc);
+            return true;
+        }
+        #endregion
+        
         #region CHILDREN
         internal void ChildDestroy(Context child)
         {
@@ -663,6 +864,14 @@ namespace CDSP.Base
             EnsurePresentationExists();
             ReparentOrphanedChildren();
             OnAwake();
+            if (_sharedContextsQueue != null)
+                for (int i = 0; i < _sharedContextsQueue?.Count; i++)
+                {
+                    var context = _sharedContextsQueue[i];
+                    if (context.Parent == null) continue;
+                    if (context.IsAwaken) continue;
+                    context.Awake();
+                }
             if (_childContexts != null)
                 for (int i = 0; i < _childContexts?.Count; i++)
                 {
@@ -712,6 +921,24 @@ namespace CDSP.Base
             }
 
             OnStart();
+            if (_sharedContextsQueue != null)
+            {                
+                for (int i = 0; i < _sharedContextsQueue.Count; i++)
+                {
+                    var context = _sharedContextsQueue[i];
+                    if (context.Parent == null) continue;
+                    if (context.IsAwaken) continue;
+                    context.Awake();
+                }
+                for (int i = 0; i < _sharedContextsQueue.Count; i++)
+                {
+                    var context = _sharedContextsQueue[i];
+                    if (context.Parent == null) continue;
+                    if (context.IsStarted) continue;
+                    if (!context.IsAwaken) context.Awake();
+                    if (context.IsAwaken) context.Start();
+                }
+            }
             if (_childContexts != null)
             {                
                 for (int i = 0; i < _childContexts.Count; i++)
@@ -748,6 +975,11 @@ namespace CDSP.Base
 
             OnTick(deltaTime);
             if (IsDead) return;
+            if (_sharedContexts != null)
+                foreach (var sc in _sharedContexts.Values)
+                {
+                    sc.Tick(deltaTime);
+                }
             if (_childContexts != null)
                 for (int i = 0; i < _childContexts.Count; i++)
                 {
@@ -757,6 +989,9 @@ namespace CDSP.Base
 
             FlushDeadChildren();
             InitializeCreatedChildren();
+            
+            FlushDestroyedSharedContexts();
+            InitializeCreatedSharedContexts();
         }
         internal virtual void OnTick(float deltaTime) { }
 
@@ -770,6 +1005,11 @@ namespace CDSP.Base
 
             OnFixedTick(deltaTime);
             if (IsDead) return;
+            if (_sharedContexts != null)
+                foreach (var sc in _sharedContexts.Values)
+                {
+                    sc.FixedTick(deltaTime);
+                }
             if (_childContexts != null)
                 for (int i = 0; i < _childContexts.Count; i++)
                 {
@@ -779,6 +1019,9 @@ namespace CDSP.Base
 
             FlushDeadChildren();
             InitializeCreatedChildren();
+            
+            FlushDestroyedSharedContexts();
+            InitializeCreatedSharedContexts();
         }
         internal virtual void OnFixedTick(float deltaTime) { }
 
@@ -792,6 +1035,11 @@ namespace CDSP.Base
 
             OnLateTick(deltaTime);
             if (IsDead) return;
+            if (_sharedContexts != null)
+                foreach (var sc in _sharedContexts.Values)
+                {
+                    sc.LateTick(deltaTime);
+                }
             if (_childContexts != null)
                 for (int i = 0; i < _childContexts.Count; i++)
                 {
@@ -801,6 +1049,9 @@ namespace CDSP.Base
 
             FlushDeadChildren();
             InitializeCreatedChildren();
+            
+            FlushDestroyedSharedContexts();
+            InitializeCreatedSharedContexts();
         }
         internal virtual void OnLateTick(float deltaTime) { }
 
@@ -814,6 +1065,22 @@ namespace CDSP.Base
                     for (int i = _childContexts.Count - 1; i >= 0; i--)
                     {
                         var context = _childContexts[i];
+                        context.Destroy();
+                    }
+
+                if (_sharedContexts != null)
+                {
+                    var scl = _sharedContexts.Values.ToList();
+                    for (int i = scl.Count - 1; i >= 0; i--)
+                    {
+                        var context = scl[i];
+                        context.Destroy();
+                    }
+                }
+                if (_sharedContextsQueue != null)
+                    for (int i = _sharedContextsQueue.Count - 1; i >= 0; i--)
+                    {
+                        var context = _sharedContextsQueue[i];
                         context.Destroy();
                     }
 
