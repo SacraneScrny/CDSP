@@ -9,7 +9,6 @@ using UnityEngine;
 
 namespace CDSP.Editor
 {
-    /// <summary>Picker for the children slot: a button showing the current root, opening a dropdown with the whole presentation hierarchy.</summary>
     [CustomEditor(typeof(Presentation), true)]
     public sealed class PresentationChildrenRootEditor : UnityEditor.Editor
     {

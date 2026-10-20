@@ -229,7 +229,6 @@ namespace CDSP.Base
         {
             OnPresentationDestroy(presentation as TPresentation);
         }
-        /// <summary>Fallback for views destroyed outside CDSP (Unity <c>OnDestroy</c>). Skipped for stale views (already replaced by a hot-swap — the old view was notified explicitly) and while a swap is in flight (sync destroy inside the swap action).</summary>
         internal sealed override void PresentationDestroy(Presentation presentation)
         {
             var c = _presentationContainer;

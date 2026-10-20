@@ -6,16 +6,6 @@ using UnityEngine;
 
 namespace CDSP.Overlay
 {
-    /// <summary>
-    /// Input backend for the debug overlay, safe for any
-    /// <c>Player Settings → Active Input Handling</c> mode (Old / Both / New).
-    /// Direct <see cref="UnityEngine.Input"/> calls throw
-    /// <see cref="InvalidOperationException"/> when the legacy backend is disabled,
-    /// so the overlay never touches it without a guard.
-    /// No compile-time dependency on <c>com.unity.inputsystem</c>: the new
-    /// Input System is reached via reflection only, and the package stays
-    /// dependency-free. Missing backends degrade to <c>false</c>, never throw.
-    /// </summary>
 #if UNITY_EDITOR || DEVELOPMENT_BUILD || CDSP_OVERLAY_IN_RELEASE
     internal static class CDSPOverlayInput
     {
@@ -48,7 +38,6 @@ namespace CDSP.Overlay
             catch { }
         }
 
-        /// <summary>Legacy <c>Input.GetKeyDown</c> equivalent, works under Old / Both / New.</summary>
         public static bool WasPressed(KeyCode key)
         {
             if (key == KeyCode.None)
@@ -62,7 +51,6 @@ namespace CDSP.Overlay
             }
             catch (InvalidOperationException)
             {
-                // Legacy backend disabled at runtime (Active Input Handling = New).
             }
             catch (Exception e)
             {
@@ -80,7 +68,6 @@ namespace CDSP.Overlay
             }
         }
 
-        /// <summary>Mouse position in IMGUI coordinates (origin top-left). Never throws.</summary>
         public static Vector2 MousePositionGUI()
         {
 #if ENABLE_LEGACY_INPUT_MANAGER
@@ -94,7 +81,6 @@ namespace CDSP.Overlay
             }
             catch (InvalidOperationException)
             {
-                // Fall through to the new Input System.
             }
             catch (Exception e)
             {
@@ -116,8 +102,6 @@ namespace CDSP.Overlay
                 WarnOnce("new-mouse", $"[CDSP] New mouse check failed: {e.GetType().Name}");
             }
 
-            // Last resort inside OnGUI: IMGUI event carries the mouse in GUI coords
-            // regardless of the active input backend.
             try
             {
                 var e2 = Event.current;
@@ -130,7 +114,6 @@ namespace CDSP.Overlay
             }
             catch
             {
-                // Ignore: Event.current may be unavailable outside OnGUI.
             }
 
             return _hasLastMouse ? _lastMouseGUI : new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
@@ -147,7 +130,7 @@ namespace CDSP.Overlay
             try { keyboard = _keyboardCurrentProp.GetValue(null, null); }
             catch { return false; }
             if (keyboard == null)
-                return false; // No keyboard device (e.g. mobile build without one).
+                return false;
 
             object keyValue = MapKeyCode(key);
             if (keyValue == null)
@@ -232,7 +215,7 @@ namespace CDSP.Overlay
                 _keyboardType = Type.GetType("UnityEngine.InputSystem.Keyboard, Unity.InputSystem");
                 _mouseType = Type.GetType("UnityEngine.InputSystem.Mouse, Unity.InputSystem");
                 if (_keyboardType == null || _keyEnumType == null)
-                    return; // Input System package not installed: new backend unavailable.
+                    return;
 
                 _keyboardCurrentProp = _keyboardType.GetProperty(
                     "current", BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy);
@@ -243,7 +226,6 @@ namespace CDSP.Overlay
                 {
                     _mouseCurrentProp = _mouseType.GetProperty(
                         "current", BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy);
-                    // Mouse.position is declared on the Mouse class itself.
                     _mousePositionProp = _mouseType.GetProperty(
                         "position", BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
                 }
@@ -283,7 +265,6 @@ namespace CDSP.Overlay
 
         static string KeyCodeToInputSystemName(KeyCode key)
         {
-            // Names that differ between UnityEngine.KeyCode and UnityEngine.InputSystem.Key.
             switch (key)
             {
                 case KeyCode.Alpha0: return "Digit0";
@@ -316,14 +297,13 @@ namespace CDSP.Overlay
                 case KeyCode.Return: return "Enter";
                 case KeyCode.LeftControl: return "LeftCtrl";
                 case KeyCode.RightControl: return "RightCtrl";
-                default: return null; // Direct name match (F1..F12, A..Z, Space, Escape, arrows...).
+                default: return null;
             }
         }
     }
 
 #else
 
-    /// <summary>Release stub: overlay is stripped, input is never polled.</summary>
     internal static class CDSPOverlayInput
     {
         public static bool WasPressed(KeyCode key) => false;

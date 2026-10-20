@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.Linq;
 
-using CDSP.Entities;
 using CDSP.Utils;
 
 using UnityEngine;
@@ -669,7 +668,6 @@ namespace CDSP.Base
             if (instance != null)
                 _destroyAction(instance);
         }
-        /// <summary>Rolls a failed hot-swap back: re-attaches temporally parked logical children to the surviving view.</summary>
         internal virtual void RestoreAfterFailedSwap()
         {
             RestoreLogicalChildren();
@@ -742,7 +740,6 @@ namespace CDSP.Base
             Instance.transform.SetParent(parent.GetChildrenAnchor() ?? parent.Instance.transform, false);
             return this;
         }
-        /// <summary>Children slot of this node: where logical children are parented. Defaults to the view root; views override it via <see cref="Presentation.ChildrenRoot"/>.</summary>
         internal virtual Transform GetChildrenAnchor()
         {
             return Instance != null ? Instance.transform : null;
@@ -1144,8 +1141,7 @@ namespace CDSP.Base
         where TDomain : Domain, new()
         where TSystem : System<TDomain>, new()
     {
-        /// <summary>Node logic. Owns ticks; reach the tree through its <c>Context</c>.</summary>
-        public TSystem System { get; internal set; }
+        internal TSystem System { get; set; }
 
         protected internal override void Initialize()
         {
@@ -1220,7 +1216,6 @@ namespace CDSP.Base
             System.Initialize(Domain, _presentationContainer);
         }
 
-        /// <summary>Children slot of this node: the bound view's <see cref="Presentation.ChildrenRoot"/>, view root when unbound.</summary>
         internal override Transform GetChildrenAnchor()
         {
             var p = Presentation;
@@ -1452,42 +1447,6 @@ namespace CDSP.Base
                     System.OnPresentationDestroy(pres);
                 }
             }
-        }
-    }
-    
-    [Serializable]
-    /// <summary>Full triple plus a per-instance event bus. Publisher and subscriber must use the same instance (usually the nearest common ancestor).</summary>
-    public abstract class Context<TDomain, TSystem, TPresentation, TEventKey>
-        : Context<TDomain, TSystem, TPresentation>, IEventBus<TEventKey>
-        where TDomain : Domain, new()
-        where TPresentation : Presentation
-        where TSystem : System<TDomain, TPresentation>, new()
-        where TEventKey : notnull
-    {
-        internal readonly EventBus<TEventKey> Events = new();
-
-        /// <summary>Subscribes a plain handler. Keep the returned subscription (dispose to unsubscribe) or <see cref="System.Track"/> it. Do not subscribe/unsubscribe from inside a handler for the same key.</summary>
-        public Subscription<TEventKey> Subscribe(TEventKey key, Handler handler) => Events.Subscribe(key, handler);
-        /// <summary>Subscribes a typed handler.</summary>
-        public Subscription<TEventKey> Subscribe<T>(TEventKey key, Handler<T> handler) => Events.Subscribe(key, handler);
-        /// <summary>Removes a plain handler.</summary>
-        public void Unsubscribe(TEventKey key, Handler handler) => Events.Unsubscribe(key, handler);
-        /// <summary>Removes a typed handler.</summary>
-        public void Unsubscribe<T>(TEventKey key, Handler<T> handler) => Events.Unsubscribe(key, handler);
-        /// <summary>Publishes to plain handlers on <paramref name="key"/>.</summary>
-        public void Emit(TEventKey key) => Events.Emit(key);
-        /// <summary>Publishes <paramref name="payload"/> to typed handlers on <paramref name="key"/>.</summary>
-        public void Emit<T>(TEventKey key, T payload) => Events.Emit(key, payload);
-
-        /// <summary>Clears all subscriptions on this instance.</summary>
-        public void ClearEvents() => Events.ClearEvents();
-        /// <summary>Clears all subscriptions for <paramref name="key"/> on this instance.</summary>
-        public void ClearEvents(TEventKey key) => Events.ClearEvents(key);
-        
-        internal override void Destroying()
-        {
-            try { base.Destroying(); }
-            finally { ClearEvents(); }
         }
     }
 }

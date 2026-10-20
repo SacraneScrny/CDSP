@@ -10,20 +10,12 @@ using UnityEngine;
 namespace CDSP.Overlay
 {
 #if UNITY_EDITOR || DEVELOPMENT_BUILD || CDSP_OVERLAY_IN_RELEASE
-    /// <summary>
-    /// Runtime (build-safe) mirror of CDSPExplorerWindow.
-    /// Window 1 (F1): context tree + details. Labels live in CDSPOverlayLabels.cs (partial).
-    /// </summary>
-    /// <summary>Build-safe runtime explorer: tree + details + tick-loop switches + time-scale slider + click-to-select. Auto-spawns as DontDestroyOnLoad, near-zero cost when fully off.</summary>
     public sealed partial class CDSPOverlay : MonoBehaviour
     {
-        /// <summary>Singleton instance (auto-created).</summary>
         public static CDSPOverlay Instance { get; private set; }
 
-        /// <summary>Key toggling the explorer window.</summary>
         [Header("Overlay")]
         public KeyCode ToggleKey = KeyCode.F1;
-        /// <summary>Show the explorer window on start.</summary>
         public bool StartVisible;
 
         const int ExplorerWindowId = 19871;
@@ -102,7 +94,6 @@ namespace CDSP.Overlay
             EnsureExists();
         }
 
-        /// <summary>Returns the singleton, creating a DontDestroyOnLoad host if needed.</summary>
         public static CDSPOverlay EnsureExists()
         {
             if (Instance != null) return Instance;
@@ -124,18 +115,12 @@ namespace CDSP.Overlay
             return Instance;
         }
 
-        /// <summary>Shows the explorer window.</summary>
         public static void Show() => EnsureExists().SetVisible(true);
-        /// <summary>Hides the explorer window.</summary>
         public static void Hide() => EnsureExists().SetVisible(false);
-        /// <summary>Toggles the explorer window.</summary>
         public static void Toggle() => EnsureExists().SetVisible(!EnsureExists()._explorerVisible);
 
-        /// <summary>Sets explorer window visibility.</summary>
         public void SetVisible(bool v) => _explorerVisible = v;
-        /// <summary>True while the explorer window is open.</summary>
         public bool IsVisible => _explorerVisible;
-        /// <summary>True when explorer, labels window and world-space labels are all off (overlay costs ~nothing).</summary>
         public bool IsFullyOff => !_explorerVisible && !_labelsWindowVisible && !LabelsEnabled;
 
         void Awake()
@@ -945,22 +930,13 @@ namespace CDSP.Overlay
             if (pres != null) DrawDump($"Presentation  ·  {pres.GetType().Name}", pres, typeof(Presentation));
             });
 
-            var bus = CDSPOverlayReflection.GetEventBusInfo(ctx);
-            if (bus.hasBus)
+            var signals = CDSPOverlayReflection.GetSignalInfo(ctx);
+            if (signals.hasSignals)
             {
-                Section($"EventBus<{bus.keyTypeName}>  ·  {bus.keyCount} keys", () =>
+                Section($"Signals  ·  {signals.signalCount}", () =>
                 {
-                    if (bus.entries.Count == 0) GUILayout.Label("— no subscriptions —", _dimStyle);
-                    foreach (var e2 in bus.entries)
-                        KV(e2.keyText, $"plain x{e2.plainCount}  {(e2.typedCounts.Count == 0 ? "—" : string.Join("  ", e2.typedCounts))}");
-                    if (ConfirmButton($"clear-{ctx.GetHashCode()}", "ClearEvents", "Sure? Clear!", 0))
-                    {
-                        Try(() =>
-                        {
-                            var m = ctx.GetType().GetMethod("ClearEvents", Type.EmptyTypes);
-                            m?.Invoke(ctx, null);
-                        });
-                    }
+                    foreach (var e2 in signals.entries)
+                        KV($"{e2.fieldName}  ({e2.signalType})", $"x{e2.subscriberCount}");
                 });
             }
 
@@ -1314,45 +1290,28 @@ namespace CDSP.Overlay
 
 #else
 
-    /// <summary>Release stub: the overlay is stripped from non-development builds (no windows, no input polling, no GameObject). All calls are no-ops and <see cref="Instance"/> is null. Define <c>CDSP_OVERLAY_IN_RELEASE</c> to force-include it.</summary>
     public sealed partial class CDSPOverlay : MonoBehaviour
     {
-        /// <summary>Singleton instance (always null in stripped builds).</summary>
         public static CDSPOverlay Instance => null;
 
-        /// <summary>Key toggling the explorer window (stored, no effect in stripped builds).</summary>
         [Header("Overlay")]
         public KeyCode ToggleKey = KeyCode.F1;
-        /// <summary>Show the explorer window on start (no effect in stripped builds).</summary>
         public bool StartVisible;
 
-        /// <summary>Key toggling the labels settings window (stored, no effect in stripped builds).</summary>
         public KeyCode LabelsKey = KeyCode.F2;
-        /// <summary>Key toggling world-space labels directly (stored, no effect in stripped builds).</summary>
         public KeyCode LabelsQuickKey = KeyCode.F3;
 
-        /// <summary>No-op in stripped builds (returns null, creates nothing).</summary>
         public static CDSPOverlay EnsureExists() => null;
-        /// <summary>No-op in stripped builds.</summary>
         public static void Show() { }
-        /// <summary>No-op in stripped builds.</summary>
         public static void Hide() { }
-        /// <summary>No-op in stripped builds.</summary>
         public static void Toggle() { }
-        /// <summary>No-op in stripped builds.</summary>
         public void SetVisible(bool v) { }
-        /// <summary>Always false in stripped builds.</summary>
         public bool IsVisible => false;
-        /// <summary>Always true in stripped builds.</summary>
         public bool IsFullyOff => true;
 
-        /// <summary>No-op in stripped builds.</summary>
         public static void ShowLabels() { }
-        /// <summary>No-op in stripped builds.</summary>
         public static void HideLabels() { }
-        /// <summary>No-op in stripped builds.</summary>
         public static void ToggleLabels() { }
-        /// <summary>No-op in stripped builds.</summary>
         public static void ShowLabelsWindow() { }
     }
 

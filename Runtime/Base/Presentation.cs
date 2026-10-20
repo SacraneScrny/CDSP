@@ -23,8 +23,7 @@ namespace CDSP.Base
         /// <summary>True after <see cref="OnStart"/> ran once.</summary>
         public bool IsStarted { get; private set; }
 
-        /// <summary>Owning system. Set once on awake, cleared on <see cref="ResetPresentation"/>.</summary>
-        public System System { get; private set; }
+        internal System System { get; private set; }
 
         [SerializeField] Transform _childrenRoot;
         /// <summary>Slot for logical children (picked in the Inspector from this hierarchy, e.g. <c>RootCanvas/Container</c>). Falls back to the view root when unset.</summary>

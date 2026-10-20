@@ -289,8 +289,7 @@ namespace CDSP.Base
         where TDomain : SharedDomain, new()
         where TSystem : SharedSystem<TDomain>, new()
     {
-        /// <summary>Service logic. Owns ticks; reach the owner scope through <see cref="SharedContext.Parent"/>.</summary>
-        public TSystem System { get; internal set; }
+        internal TSystem System { get; set; }
 
         protected internal override void Initialize()
         {

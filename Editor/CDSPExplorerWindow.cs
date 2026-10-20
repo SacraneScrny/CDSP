@@ -12,10 +12,8 @@ using UnityEngine;
 
 namespace CDSP.Editor
 {
-    /// <summary>Live tree explorer: state badges, GameObject path, tick flags, Domain/System/Presentation dumps, EventBus subscriptions, children, shared services and parent chain. Editor-only, zero build cost.</summary>
     public sealed class CDSPExplorerWindow : EditorWindow
     {
-        /// <summary>Opens the explorer (<c>CDSP / Explorer</c>, Ctrl+Shift+E).</summary>
         [MenuItem("CDSP/Explorer %#e")]
         public static void Open()
         {
@@ -662,7 +660,7 @@ namespace CDSP.Editor
             Section(DrawFlagsSection, ctx);
             Section(DrawLifecycleButtons, ctx);
             Section(DrawTripleSection, ctx);
-            if (CDSPExplorerReflection.GetEventBusInfo(ctx).hasBus) Section(DrawEventsSection, ctx);
+            if (CDSPExplorerReflection.GetSignalInfo(ctx).hasSignals) Section(DrawSignalsSection, ctx);
             Section(DrawSharedSection, ctx);
             Section(DrawChildrenSection, ctx);
             Section(DrawBreadcrumb, ctx);
@@ -1052,43 +1050,20 @@ namespace CDSP.Editor
             EditorGUI.indentLevel--;
         }
 
-        void DrawEventsSection(Context ctx)
+        void DrawSignalsSection(Context ctx)
         {
-            var bus = CDSPExplorerReflection.GetEventBusInfo(ctx);
-            if (!bus.hasBus) return;
+            var signals = CDSPExplorerReflection.GetSignalInfo(ctx);
+            if (!signals.hasSignals) return;
             EditorGUILayout.Space(4);
-            EditorGUILayout.LabelField($"EventBus<{bus.keyTypeName}>  (keys: {bus.keyCount})", EditorStyles.boldLabel);
-            if (bus.entries.Count == 0)
-            {
-                EditorGUILayout.LabelField("— no subscriptions —", EditorStyles.miniLabel);
-                return;
-            }
-            foreach (var e in bus.entries)
+            EditorGUILayout.LabelField($"Signals  ({signals.signalCount})", EditorStyles.boldLabel);
+            foreach (var e in signals.entries)
             {
                 EditorGUILayout.BeginHorizontal(EditorStyles.helpBox);
-                GUILayout.Label(e.keyText, EditorStyles.miniBoldLabel, GUILayout.Width(180));
-                GUILayout.Label($"plain x{e.plainCount}", EditorStyles.miniLabel, GUILayout.Width(80));
-                GUILayout.Label(e.typedCounts.Count == 0 ? "—" : string.Join(" · ", e.typedCounts),
-                    EditorStyles.miniLabel, GUILayout.ExpandWidth(true));
+                GUILayout.Label(e.fieldName, EditorStyles.miniBoldLabel, GUILayout.Width(180));
+                GUILayout.Label($"x{e.subscriberCount}", EditorStyles.miniLabel, GUILayout.Width(60));
+                GUILayout.Label(e.signalType, EditorStyles.miniLabel, GUILayout.ExpandWidth(true));
                 EditorGUILayout.EndHorizontal();
             }
-            EditorGUILayout.BeginHorizontal();
-            GUILayout.FlexibleSpace();
-            EditorGUI.BeginDisabledGroup(!Application.isPlaying);
-            if (GUILayout.Button("ClearEvents", GUILayout.Width(110)))
-            {
-                if (EditorUtility.DisplayDialog("CDSP", "Clear all subscriptions of this context?", "Yes", "No"))
-                {
-                    try
-                    {
-                        var m = ctx.GetType().GetMethod("ClearEvents", Type.EmptyTypes);
-                        m?.Invoke(ctx, null);
-                    }
-                    catch (Exception ex) { Debug.LogException(ex); }
-                }
-            }
-            EditorGUI.EndDisabledGroup();
-            EditorGUILayout.EndHorizontal();
         }
 
         void DrawChildrenSection(Context ctx)

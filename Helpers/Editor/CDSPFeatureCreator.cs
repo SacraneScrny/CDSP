@@ -9,13 +9,6 @@ using UnityEngine;
 
 namespace CDSP.Editor
 {
-    /// <summary>
-    /// Scaffolds a new CDSP feature (same triple as Samples~/Calendar).
-    /// Lives in Helpers/Editor so it ships with the package and needs no install:
-    /// Project window → select a folder → Right-click → Create → CDSP → ...
-    /// Namespace is resolved like Rider does it: nearest .asmdef rootNamespace
-    /// plus the relative folder path, with an Assets/-relative fallback.
-    /// </summary>
     public static class CDSPFeatureCreator
     {
         const string MenuSplit = "Assets/Create/CDSP/CDSP Feature (4 files, like Calendar)...";
@@ -85,7 +78,6 @@ namespace CDSP.Editor
 
         internal static string ResolveNamespace(string outDirAssetPath)
         {
-            // 1. Nearest .asmdef walking up from the output folder.
             var projectRoot = Path.GetDirectoryName(Application.dataPath).Replace('\\', '/');
             var absolute = Path.Combine(projectRoot, outDirAssetPath).Replace('\\', '/');
             var dir = new DirectoryInfo(absolute);
@@ -110,13 +102,12 @@ namespace CDSP.Editor
                                 return root + tail;
                             }
                         }
-                        catch { /* broken asmdef: keep walking up */ }
+                        catch { }
                     }
                 }
                 dir = dir.Parent;
             }
 
-            // 2. Fallback: path relative to Assets/ (how Calendar gets Logic.Features.Calendar).
             var parts = outDirAssetPath.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
             int assetsIndex = Array.FindIndex(parts, p => p.Equals("Assets", StringComparison.Ordinal));
             if (assetsIndex >= 0)
@@ -130,7 +121,6 @@ namespace CDSP.Editor
                 if (tail.Length > 0) return tail;
             }
 
-            // 3. Last resort: folder name.
             var fallback = SanitizePart(Path.GetFileName(outDirAssetPath.TrimEnd('/')));
             return fallback.Length > 0 ? fallback : "Game";
         }
@@ -258,7 +248,6 @@ namespace CDSP.Editor
         }
     }
 
-    /// <summary>Small popup asking for the feature name with a live namespace preview.</summary>
     internal sealed class CDSPFeatureNameWindow : EditorWindow
     {
         string _parentFolder = "Assets";

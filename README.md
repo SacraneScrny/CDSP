@@ -56,7 +56,7 @@ CDSP is a lightweight Unity architecture built around a **tree of contexts** wit
 | **Domain** | Plain data. No Unity API, no logic. | Holds state, cleans itself in `OnDestroy`. |
 | **System** | Logic. Ticks, input, spawning, rules. | Reads/writes `Domain`, calls `Presentation`, spawns children. |
 | **Presentation** | Unity view (`MonoBehaviour`). | Transforms, animators, particles, UI widgets. No game rules, no input polling. |
-| **Context** | Owns the triple plus children. | Lifecycle, hierarchy, per-branch `TimeScale`, optional `EventBus`. |
+| **Context** | Owns the triple plus children. | Lifecycle, hierarchy, per-branch `TimeScale`, shared `Signal` fields. |
 
 You never write `MonoBehaviour.Awake / Start / Update`. You override `OnAwake / OnStart / OnTick / OnFixedTick / OnLateTick / OnDestroy`, and CDSP calls them top-down through the tree.
 
@@ -186,15 +186,20 @@ public sealed class SpawnerContext : Context<SpawnerDomain, SpawnerSystem> { }
 public sealed class EnemyContext
     : Context<EnemyDomain, EnemySystem, EnemyPresentation> { }
 
-// Full triple + per-instance event bus (key is usually an enum)
-public sealed class GameContext
-    : Context<GameDomain, GameSystem, GamePresentation, GameEvents> { }
+// Full triple + shared signals (declared as fields, reached via Up<T>)
+public sealed class GameContext : Context<GameDomain, GameSystem, GamePresentation>
+{
+    public readonly Signal ScoreChanged = new();
+    public readonly Signal<int> Damaged = new();
+}
 ```
 
 - `Context<TDomain>` exposes `Domain` and `UpdateDomain(...)` (used by `ContextRoot<TContext, TDomain>` to inject the Inspector-assigned domain).
 - `Context<TDomain, TSystem>` seals `OnAwake / OnStart / OnTick / OnFixedTick / OnLateTick` into `System` calls — gameplay code lives only in `System.OnX`.
 - `Context<TDomain, TSystem, TPresentation>` exposes `Presentation` and keeps one shared `PresentationContainer` between context and system, so both see the same view.
-- `Context<TDomain, TSystem, TPresentation, TEventKey>` adds `Subscribe / Emit / ClearEvents` proxies over its own `EventBus`.
+- One-to-many notifications are `Signal` / `Signal<T1..T5>` fields declared on the concrete context — no key enums, no extra generic argument. `System` is internal (cross-context logic goes through signals); `Domain` stays readable.
+
+The concrete context class is the inter-context API surface: anything another branch needs — `Signal` fields for one-to-many notifications, plain methods for direct calls — is declared here and reached via `Up<T>()`. Since `System` is internal, cross-context coupling cannot hide inside logic; it is always visible on the context.
 
 `Context` exposes `OnCreate()` / `OnDestroy()` overrides for **emergency cases only** (e.g. wiring that cannot live in `System`/`Domain`). Normal gameplay code belongs in `System.OnAwake / OnStart / OnTick / OnDestroy` and `Domain.OnDestroy`, and view cleanup belongs in `Presentation.OnDisposing()`. If you are reaching for `Context.OnCreate`, reconsider first.
 
@@ -219,7 +224,7 @@ Creation details:
 
 Destruction details:
 
-- `Destroy()` kills children in **reverse** order, then runs `Destroying()` (`System.OnDestroy` + disposes tracked subscriptions, `Domain.OnDestroy`, `ClearEvents()`), then `Context.OnDestroy()`, then detaches from the parent and destroys the `GameObject` via the configured destroy action.
+- `Destroy()` kills children in **reverse** order, then runs `Destroying()` (`System.OnDestroy` + disposes tracked subscriptions, `Domain.OnDestroy`), then `Context.OnDestroy()`, then detaches from the parent and destroys the `GameObject` via the configured destroy action.
 - Detachment is two-phase: the child is marked dead immediately (`IsDead`), but removed from the parent's list at the end of the next tick pass. Always check `IsDead` on cached references.
 
 ---
@@ -362,48 +367,50 @@ if (enemy.TryFindPresentation(out var view)) { /* use view */ }
 
 ---
 
-## 9. Events
+## 9. Signals
 
-Add a fourth generic argument — usually an enum — to get a per-instance bus:
+Declare one-to-many notifications as fields on the context that owns them (usually the nearest common ancestor of publishers and subscribers):
 
 ```csharp
-public enum GameEvents { ScoreChanged, Damaged, PlayerDied }
+public sealed class GameContext : Context<GameDomain, GameSystem, GamePresentation>
+{
+    public readonly Signal ScoreChanged = new();
+    public readonly Signal<Damaged> Damaged = new();
+}
 
-public sealed class GameContext
-    : Context<GameDomain, GameSystem, GamePresentation, GameEvents> { }
+public readonly struct Damaged
+{
+    public readonly int Amount;
+    public Damaged(int amount) => Amount = amount;
+}
 ```
 
 ```csharp
-// Subscribe (keep the subscription, Dispose to unsubscribe)
-_subscription = game.Subscribe(GameEvents.ScoreChanged, Refresh);
-_damageSub = game.Subscribe<int>(GameEvents.Damaged, OnDamaged);
+// Subscribe (keep the handler, Dispose to unsubscribe)
+_handler = game.Damaged.Subscribe(OnDamaged);
 
 // Publish
-game.Emit(GameEvents.ScoreChanged);
-game.Emit(GameEvents.Damaged, 25);
-
-// Unsubscribe manually, or clear wholesale
-subscription.Dispose();
-game.Unsubscribe(GameEvents.ScoreChanged, Refresh);
-game.ClearEvents(GameEvents.Damaged);
-game.ClearEvents();
+game.ScoreChanged.Emit();
+game.Damaged.Emit(new Damaged(25));
 ```
 
 Semantics:
 
-- `Emit<T>(key, payload)` fires only typed `Handler<T>` handlers on the same key; plain `Emit(key)` fires only plain handlers.
-- The bus is **per context instance** — publisher and subscriber must use the same instance (usually the nearest common ancestor).
-- The context clears all subscriptions automatically on destroy.
-- `Subscription` is a disposable struct — track it in the system so it dies with the node:
+- `Signal` fires plain handlers; `Signal<T1..T5>` fires typed handlers with up to 5 arguments. Pack wider payloads into a `readonly struct`.
+- Signals are **per context instance** — publisher and subscriber must use the same instance (reach it with `Up<T>()`).
+- `SignalHandler` is a disposable struct — track it in the system so it dies with the node:
 
 ```csharp
 protected override void OnAwake()
 {
-    Track(Context.Up<GameContext>().Subscribe<int>(GameEvents.Damaged, OnDamaged));
+    Track(Context.Up<GameContext>().Damaged.Subscribe(OnDamaged));
 }
 ```
 
-Use events for one-to-many notifications (death → HUD + audio + analytics); use direct calls for parent ↔ known child. Do not subscribe/unsubscribe from inside a handler for the same key — the bus does not guard against mutation during `Emit`.
+- Do not subscribe/unsubscribe a signal from inside a handler of the same signal — it logs an error and is refused. Dispose one-shot handlers from outside the handler.
+- `Emit` on a signal with no subscribers costs a single null-safe loop.
+
+Use signals for one-to-many notifications (death → HUD + audio + analytics); use direct calls for parent ↔ known child. Systems are internal — cross-context logic goes through signals declared on contexts; read-only cross-context data stays on `Domain`.
 
 ---
 
@@ -425,7 +432,7 @@ EntryPointUpdate.SetUpdateTick(false);   // pause one pass globally
 
 ## 11. Debugging
 
-**Editor:** `CDSP / Explorer` (`Ctrl+Shift+E`) — live tree with state badges, `GameObject` path, tick flags, `Domain` / `System` / `Presentation` member dumps, `EventBus` subscriptions, children list, parent chain. Follow-selection, ping, dead-grace highlighting, play-mode lifecycle buttons (with confirmations). Editor-only, zero build cost.
+**Editor:** `CDSP / Explorer` (`Ctrl+Shift+E`) — live tree with state badges, `GameObject` path, tick flags, `Domain` / `System` / `Presentation` member dumps, `Signal` subscriptions, children list, parent chain. Follow-selection, ping, dead-grace highlighting, play-mode lifecycle buttons (with confirmations). Editor-only, zero build cost.
 
 **Runtime overlay** (build-safe IMGUI, auto-spawns as `DontDestroyOnLoad`, near-zero cost when fully off):
 
@@ -492,9 +499,9 @@ Context.Up<T>(includeSelf: true); Context.TryUp<T>(out var x, includeSelf: true)
 Context.IsSimulationRunning(); / IsSimulationRunning<T>(); / IsSimulationRunning(from);
 EntryPoint.FindRoot<T>(); EntryPoint.MainContextsList; // FindRoot skips dead roots
 
-// Events (4-arg contexts)
-game.Subscribe(key, h); game.Subscribe<T>(key, h); game.Emit(key); game.Emit(key, payload);
-sub.Dispose(); game.Unsubscribe(key, h); game.ClearEvents(); game.ClearEvents(key);
+// Signals (fields on the context)
+game.ScoreChanged.Emit(); game.Damaged.Emit(new Damaged(25));
+var h = game.Damaged.Subscribe(OnDamaged); h.Dispose();
 
 // System helpers
 Track(subscription); // auto-dispose on System.Destroy

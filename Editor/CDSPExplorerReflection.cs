@@ -28,7 +28,6 @@ namespace CDSP.Editor
         static FieldInfo SharedField => GetFieldCached(typeof(Context), "_sharedContexts", SharedFieldCache);
         static FieldInfo SharedQueueField => GetFieldCached(typeof(Context), "_sharedContextsQueue", SharedQueueFieldCache);
 
-        /// <summary>Live (attached) services of <paramref name="ctx"/>. Detached entries are skipped.</summary>
         public static List<SharedContext> GetSharedContexts(Context ctx)
         {
             if (ctx == null) return null;
@@ -44,7 +43,6 @@ namespace CDSP.Editor
             catch { return null; }
         }
 
-        /// <summary>Services created but not registered yet (still in the init queue). Never overlaps with <see cref="GetSharedContexts"/>.</summary>
         public static List<SharedContext> GetPendingSharedContexts(Context ctx)
         {
             if (ctx == null) return null;
@@ -114,7 +112,6 @@ namespace CDSP.Editor
             catch { return null; }
         }
 
-        /// <summary>Domain of a shared service, or null for dataless services.</summary>
         public static SharedDomain GetSharedDomain(SharedContext sc)
         {
             if (sc == null) return null;
@@ -131,7 +128,6 @@ namespace CDSP.Editor
             catch { return null; }
         }
 
-        /// <summary>System of a shared service, or null for logicless services.</summary>
         public static SharedSystem GetSharedSystem(SharedContext sc)
         {
             if (sc == null) return null;
@@ -209,74 +205,47 @@ namespace CDSP.Editor
             catch { return false; }
         }
 
-        public sealed class BusEntryInfo
+        public sealed class SignalEntryInfo
         {
-            public string keyText;
-            public int plainCount;
-            public List<string> typedCounts = new();
+            public string fieldName;
+            public string signalType;
+            public int subscriberCount;
         }
 
-        public sealed class BusInfo
+        public sealed class SignalInfo
         {
-            public bool hasBus;
-            public string keyTypeName;
-            public int keyCount;
-            public List<BusEntryInfo> entries = new();
+            public bool hasSignals;
+            public int signalCount;
+            public List<SignalEntryInfo> entries = new();
         }
 
-        public static BusInfo GetEventBusInfo(Context ctx)
+        public static SignalInfo GetSignalInfo(Context ctx)
         {
-            var info = new BusInfo();
+            var info = new SignalInfo();
             if (ctx == null) return info;
             try
             {
-                var eventsField = ctx.GetType().GetField("Events", AnyInstance);
-                if (eventsField == null) return info;
-                var bus = eventsField.GetValue(ctx);
-                if (bus == null) return info;
-                info.hasBus = true;
-
-                var busType = bus.GetType();
-                var keyType = busType.IsGenericType ? busType.GetGenericArguments()[0] : null;
-                info.keyTypeName = keyType != null ? PrettyName(keyType) : busType.Name;
-
-                var keyCountProp = busType.GetProperty("KeyCount", AnyInstance);
-                if (keyCountProp != null)
-                    info.keyCount = (int)keyCountProp.GetValue(bus);
-
-                var mapField = busType.GetField("_map", AnyInstance);
-                var map = mapField?.GetValue(bus) as IDictionary;
-                if (map == null) return info;
-
-                int guard = 0;
-                foreach (DictionaryEntry kv in map)
+                var t = ctx.GetType();
+                int depth = 0;
+                while (t != null && t != typeof(object) && depth++ < 16)
                 {
-                    if (guard++ > 200) break;
-                    var entry = new BusEntryInfo { keyText = kv.Key != null ? kv.Key.ToString() : "<null>" };
-                    try
+                    foreach (var f in t.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
                     {
-                        var e = kv.Value;
-                        if (e != null)
+                        if (info.entries.Count >= 200) break;
+                        if (!typeof(CDSP.Entities.ASignal).IsAssignableFrom(f.FieldType)) continue;
+                        var entry = new SignalEntryInfo { fieldName = f.Name, signalType = PrettyName(f.FieldType) };
+                        try
                         {
-                            var et = e.GetType();
-                            var plain = et.GetField("plain", AnyInstance)?.GetValue(e) as Delegate;
-                            entry.plainCount = plain?.GetInvocationList().Length ?? 0;
-                            var typed = et.GetField("typed", AnyInstance)?.GetValue(e) as IDictionary;
-                            if (typed != null)
-                            {
-                                foreach (DictionaryEntry tk in typed)
-                                {
-                                    var d = tk.Value as Delegate;
-                                    int c = d?.GetInvocationList().Length ?? 0;
-                                    string tn = (tk.Key as Type)?.Name ?? "?";
-                                    entry.typedCounts.Add($"{tn} x{c}");
-                                }
-                            }
+                            var s = f.GetValue(ctx) as CDSP.Entities.ASignal;
+                            entry.subscriberCount = s != null ? s.SubscriberCount : 0;
                         }
+                        catch { }
+                        info.entries.Add(entry);
                     }
-                    catch { }
-                    info.entries.Add(entry);
+                    t = t.BaseType;
                 }
+                info.hasSignals = info.entries.Count > 0;
+                info.signalCount = info.entries.Count;
             }
             catch { }
             return info;

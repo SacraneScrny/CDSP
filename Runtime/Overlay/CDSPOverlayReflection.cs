@@ -9,12 +9,6 @@ using UnityEngine;
 
 namespace CDSP.Overlay
 {
-    /// <summary>
-    /// Runtime-safe reflection access to CDSP internals.
-    /// Same idea as Editor/CDSPExplorerReflection, but without UnityEditor dependencies,
-    /// so it works in builds.
-    /// </summary>
-    /// <summary>Build-safe reflection bridge over context internals for the runtime overlay. Read-only, exception-tolerant.</summary>
     public static class CDSPOverlayReflection
     {
         static readonly BindingFlags AnyInstance =
@@ -27,7 +21,6 @@ namespace CDSP.Overlay
 
         static FieldInfo ChildField => GetFieldCached(typeof(Context), "_childContexts", ChildFieldCache);
 
-        /// <summary>Raw child list of <paramref name="ctx"/> (internal list, may include not-yet-swept dead entries).</summary>
         public static List<Context> GetChildren(Context ctx)
         {
             if (ctx == null) return null;
@@ -38,7 +31,6 @@ namespace CDSP.Overlay
             catch { return null; }
         }
 
-        /// <summary>Domain of <paramref name="ctx"/>, or null for dataless nodes.</summary>
         public static Domain GetDomain(Context ctx)
         {
             if (ctx == null) return null;
@@ -55,7 +47,6 @@ namespace CDSP.Overlay
             catch { return null; }
         }
 
-        /// <summary>System of <paramref name="ctx"/>, or null for logicless nodes.</summary>
         public static Base.System GetSystem(Context ctx)
         {
             if (ctx == null) return null;
@@ -72,7 +63,6 @@ namespace CDSP.Overlay
             catch { return null; }
         }
 
-        /// <summary>Presentation of <paramref name="ctx"/>, or null.</summary>
         public static Presentation GetPresentation(Context ctx)
         {
             if (ctx == null) return null;
@@ -89,18 +79,13 @@ namespace CDSP.Overlay
             catch { return null; }
         }
 
-        /// <summary>Deferred-lifecycle flags for badges (pending awake/start, not-yet-swept dead children).</summary>
         public struct ContextDebugFlags
         {
-            /// <summary>Has children waiting for awake.</summary>
             public bool notAwaken;
-            /// <summary>Has children waiting for start.</summary>
             public bool notStarted;
-            /// <summary>Has not-yet-swept dead children.</summary>
             public bool hasDeadChildren;
         }
 
-        /// <summary>Reads deferred-lifecycle flags of <paramref name="ctx"/>.</summary>
         public static ContextDebugFlags GetDebugFlags(Context ctx)
         {
             var f = new ContextDebugFlags();
@@ -116,7 +101,6 @@ namespace CDSP.Overlay
             return f;
         }
 
-        /// <summary>Tries to set a bool property (walks base types, uses non-public setters). Used by the overlay pause/tick toggles.</summary>
         public static bool TrySetBoolProp(object obj, string propName, bool value)
         {
             if (obj == null) return false;
@@ -140,97 +124,56 @@ namespace CDSP.Overlay
             catch { return false; }
         }
 
-        /// <summary>Subscription counts for one event key.</summary>
-        public sealed class BusEntryInfo
+        public sealed class SignalEntryInfo
         {
-            /// <summary>Key text.</summary>
-            public string keyText;
-            /// <summary>Plain handler count.</summary>
-            public int plainCount;
-            /// <summary>Per-payload-type counts as <c>"Type xN"</c>.</summary>
-            public List<string> typedCounts = new();
+            public string fieldName;
+            public string signalType;
+            public int subscriberCount;
         }
 
-        /// <summary>Snapshot of a context's event bus for the overlay.</summary>
-        public sealed class BusInfo
+        public sealed class SignalInfo
         {
-            /// <summary>False when the context has no bus (not a 4-arg context).</summary>
-            public bool hasBus;
-            /// <summary>Event key type name.</summary>
-            public string keyTypeName;
-            /// <summary>Number of keys with subscriptions.</summary>
-            public int keyCount;
-            /// <summary>Per-key entries (capped).</summary>
-            public List<BusEntryInfo> entries = new();
+            public bool hasSignals;
+            public int signalCount;
+            public List<SignalEntryInfo> entries = new();
         }
 
-        /// <summary>Reads the event-bus snapshot of <paramref name="ctx"/> (capped at 200 keys).</summary>
-        public static BusInfo GetEventBusInfo(Context ctx)
+        public static SignalInfo GetSignalInfo(Context ctx)
         {
-            var info = new BusInfo();
+            var info = new SignalInfo();
             if (ctx == null) return info;
             try
             {
-                var eventsField = ctx.GetType().GetField("Events", AnyInstance);
-                if (eventsField == null) return info;
-                var bus = eventsField.GetValue(ctx);
-                if (bus == null) return info;
-                info.hasBus = true;
-
-                var busType = bus.GetType();
-                var keyType = busType.IsGenericType ? busType.GetGenericArguments()[0] : null;
-                info.keyTypeName = keyType != null ? PrettyName(keyType) : busType.Name;
-
-                var keyCountProp = busType.GetProperty("KeyCount", AnyInstance);
-                if (keyCountProp != null)
-                    info.keyCount = (int)keyCountProp.GetValue(bus);
-
-                var mapField = busType.GetField("_map", AnyInstance);
-                var map = mapField?.GetValue(bus) as IDictionary;
-                if (map == null) return info;
-
-                int guard = 0;
-                foreach (DictionaryEntry kv in map)
+                var t = ctx.GetType();
+                int depth = 0;
+                while (t != null && t != typeof(object) && depth++ < 16)
                 {
-                    if (guard++ > 200) break;
-                    var entry = new BusEntryInfo { keyText = kv.Key != null ? kv.Key.ToString() : "<null>" };
-                    try
+                    foreach (var f in t.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
                     {
-                        var e = kv.Value;
-                        if (e != null)
+                        if (info.entries.Count >= 200) break;
+                        if (!typeof(CDSP.Entities.ASignal).IsAssignableFrom(f.FieldType)) continue;
+                        var entry = new SignalEntryInfo { fieldName = f.Name, signalType = PrettyName(f.FieldType) };
+                        try
                         {
-                            var et = e.GetType();
-                            var plain = et.GetField("plain", AnyInstance)?.GetValue(e) as Delegate;
-                            entry.plainCount = plain?.GetInvocationList().Length ?? 0;
-                            var typed = et.GetField("typed", AnyInstance)?.GetValue(e) as IDictionary;
-                            if (typed != null)
-                            {
-                                foreach (DictionaryEntry tk in typed)
-                                {
-                                    var d = tk.Value as Delegate;
-                                    int c = d?.GetInvocationList().Length ?? 0;
-                                    string tn = (tk.Key as Type)?.Name ?? "?";
-                                    entry.typedCounts.Add($"{tn} x{c}");
-                                }
-                            }
+                            var s = f.GetValue(ctx) as CDSP.Entities.ASignal;
+                            entry.subscriberCount = s != null ? s.SubscriberCount : 0;
                         }
+                        catch { }
+                        info.entries.Add(entry);
                     }
-                    catch { }
-                    info.entries.Add(entry);
+                    t = t.BaseType;
                 }
+                info.hasSignals = info.entries.Count > 0;
+                info.signalCount = info.entries.Count;
             }
             catch { }
             return info;
         }
 
-        /// <summary>One dumped member row (field or property).</summary>
         public struct FieldRow
         {
-            /// <summary>Member name.</summary>
             public string name;
-            /// <summary>Pretty member type name.</summary>
             public string typeName;
-            /// <summary>Short value text (truncated).</summary>
             public string valueText;
         }
 
@@ -240,7 +183,6 @@ namespace CDSP.Overlay
             "IsReady", "IsAwaken", "IsStarted"
         };
 
-        /// <summary>Dumps fields then properties of <paramref name="obj"/> (most-derived first, stops before <paramref name="stopBefore"/>). Skips framework noise; failures render as text, never throw.</summary>
         public static List<FieldRow> DumpMembers(object obj, int max = 40, bool includeNonPublic = false, bool hideStandard = true, Type stopBefore = null)
         {
             var rows = new List<FieldRow>();
@@ -304,7 +246,6 @@ namespace CDSP.Overlay
             return rows;
         }
 
-        /// <summary>Short display text for a value (GameObjects, components, enumerables, 120-char cap).</summary>
         public static string ToShortString(object v)
         {
             if (v == null) return "null";
@@ -327,7 +268,6 @@ namespace CDSP.Overlay
             catch { return "<?>" ; }
         }
 
-        /// <summary>Generic-aware short type name (<c>List&lt;Int32&gt;</c> instead of <c>List`1</c>).</summary>
         public static string PrettyName(Type t)
         {
             if (t == null) return "null";

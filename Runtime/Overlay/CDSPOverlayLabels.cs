@@ -8,15 +8,9 @@ using UnityEngine;
 namespace CDSP.Overlay
 {
 #if UNITY_EDITOR || DEVELOPMENT_BUILD || CDSP_OVERLAY_IN_RELEASE
-    /// <summary>
-    /// Window 2 (F2): screen labels over scene objects + their settings.
-    /// Labels are drawn whenever LabelsEnabled, even with both windows closed.
-    /// </summary>
     public sealed partial class CDSPOverlay
     {
-        /// <summary>Key toggling the labels settings window.</summary>
         public KeyCode LabelsKey = KeyCode.F2;
-        /// <summary>Key toggling world-space labels directly.</summary>
         public KeyCode LabelsQuickKey = KeyCode.F3;
 
         const int LabelsWindowId = 19872;
@@ -33,7 +27,7 @@ namespace CDSP.Overlay
         bool _showContextName;
         bool _showState;
         bool _showTimeScale;
-        bool _showEvents;
+        bool _showSignals;
         bool _showDomainFields = true;
         bool _showSystemFields;
         bool _showPresentationFields;
@@ -72,13 +66,9 @@ namespace CDSP.Overlay
         readonly Dictionary<Context, LabelCacheEntry> _labelCache = new();
         static readonly StringBuilder _sb = new StringBuilder(512);
 
-        /// <summary>Enables world-space labels (drawn even with both windows closed).</summary>
         public static void ShowLabels() => EnsureExists().LabelsEnabled = true;
-        /// <summary>Disables world-space labels.</summary>
         public static void HideLabels() => EnsureExists().LabelsEnabled = false;
-        /// <summary>Toggles world-space labels.</summary>
         public static void ToggleLabels() => EnsureExists().LabelsEnabled = !EnsureExists().LabelsEnabled;
-        /// <summary>Opens the labels settings window.</summary>
         public static void ShowLabelsWindow() => EnsureExists()._labelsWindowVisible = true;
 
         void ClampLabelsWindow()
@@ -147,7 +137,7 @@ namespace CDSP.Overlay
                 GUILayout.EndHorizontal();
                 GUILayout.BeginHorizontal(GUILayout.Height(22));
                 _showTimeScale = ToggleWide(_showTimeScale, "TimeScale");
-                _showEvents = ToggleWide(_showEvents, "Events");
+                _showSignals = ToggleWide(_showSignals, "Signals");
                 GUILayout.EndHorizontal();
                 GUILayout.BeginHorizontal(GUILayout.Height(22));
                 _showDomainFields = ToggleWide(_showDomainFields, "Domain fields");
@@ -636,11 +626,11 @@ namespace CDSP.Overlay
                 _sb.Append("ts ×").Append(ctx.TimeScale.ToString("0.00"));
                 n++;
             }
-            if (_showEvents)
+            if (_showSignals)
             {
                 if (n > 0) _sb.Append('\n');
-                var bus = CDSPOverlayReflection.GetEventBusInfo(ctx);
-                _sb.Append(bus.hasBus ? $"ev {bus.keyCount} keys" : "ev —");
+                var signals = CDSPOverlayReflection.GetSignalInfo(ctx);
+                _sb.Append(signals.hasSignals ? $"sig {signals.signalCount}" : "sig —");
                 n++;
             }
             n += AppendRows(single ? "" : "D.", e.dRows, n);
@@ -681,8 +671,6 @@ namespace CDSP.Overlay
 
 #else
 
-    // Release stub members live in CDSPOverlay.cs; this partial intentionally adds
-    // nothing so the class still compiles as a whole.
     public sealed partial class CDSPOverlay
     {
     }
