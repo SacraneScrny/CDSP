@@ -192,14 +192,48 @@ public sealed class GameContext : Context<GameDomain, GameSystem, GamePresentati
     public readonly Signal ScoreChanged = new();
     public readonly Signal<int> Damaged = new();
 }
+
+// Leaf service: data + logic, no children, no GameObject, no view.
+// Ticks with the owner; reached via Shared<T>() / TryShared<T>().
+public sealed class RngService : SharedContext<RngDomain, RngSystem> { }
 ```
 
 - `Context<TDomain>` exposes `Domain` and `UpdateDomain(...)` (used by `ContextRoot<TContext, TDomain>` to inject the Inspector-assigned domain).
 - `Context<TDomain, TSystem>` seals `OnAwake / OnStart / OnTick / OnFixedTick / OnLateTick` into `System` calls — gameplay code lives only in `System.OnX`.
 - `Context<TDomain, TSystem, TPresentation>` exposes `Presentation` and keeps one shared `PresentationContainer` between context and system, so both see the same view.
-- One-to-many notifications are `Signal` / `Signal<T1..T5>` fields declared on the concrete context — no key enums, no extra generic argument. `System` is internal (cross-context logic goes through signals); `Domain` stays readable.
+- One-to-many notifications are `Signal` / `Signal<T1..T5>` fields declared on the concrete context — no key enums, no extra generic argument. `System` is `protected` on the context (reachable from derived context classes, invisible outside the owning assembly); `Domain` stays readable.
 
-The concrete context class is the inter-context API surface: anything another branch needs — `Signal` fields for one-to-many notifications, plain methods for direct calls — is declared here and reached via `Up<T>()`. Since `System` is internal, cross-context coupling cannot hide inside logic; it is always visible on the context.
+`SharedContext` was created for splitting god-contexts: when a context accumulates unrelated responsibilities (save/load, RNG streams, run statistics, pools), extract each cohesive one into a leaf service instead of growing `System`/`Domain`. A shared service has no children, no `GameObject` and no presentation — viewless logic only — and ticks with its owner. Attach it once, usually in the owner's `OnAwake`:
+
+```csharp
+Context.CreateShared<RngService>();                    // deferred, like CreateChild
+Context.CreateSharedImmediate<SaveService>();          // awake/started synchronously
+```
+
+Reach it from any `System` or `SharedSystem` in the scope below the owner (nearest live match wins; detached services are skipped):
+
+```csharp
+var rng = Shared<RngService>();                        // logs an error when none is found
+if (TryShared<RngService>(out var r)) { /* ... */ }    // silent bool variant
+```
+
+Rules of the flavor: one live instance per type per scope (creating twice returns the existing one with a warning); destroying is `Destroy()` / `DestroySharedContext<T>()` (detaches, `IsValid` becomes false — check it on cached refs); like contexts, never destroy a service from inside a handler of a signal it is subscribed to — use `DestroyNextTick()` instead.
+
+The concrete context class is the inter-context API surface: anything another branch needs — `Signal` fields for one-to-many notifications, plain methods for direct calls — is declared here and reached via `Up<T>()`. Since `System` is only visible inside the derived context, cross-context coupling cannot hide inside logic; it is always visible on the context:
+
+```csharp
+public sealed class EnemyContext : Context<EnemyDomain, EnemySystem, EnemyPresentation>
+{
+    public readonly Signal<Hit> ReceiveHit;
+
+    public EnemyContext() { ReceiveHit = new Signal<Hit>(this); }
+
+    // Direct call for a known neighbour: visible, searchable, debuggable.
+    public void Damage(float amount) => System.Damage(amount);
+}
+```
+
+The tag is any object (typically the owning context itself — note: it cannot be passed in a field initializer, use the constructor); error messages print its runtime type.
 
 `Context` exposes `OnCreate()` / `OnDestroy()` overrides for **emergency cases only** (e.g. wiring that cannot live in `System`/`Domain`). Normal gameplay code belongs in `System.OnAwake / OnStart / OnTick / OnDestroy` and `Domain.OnDestroy`, and view cleanup belongs in `Presentation.OnDisposing()`. If you are reaching for `Context.OnCreate`, reconsider first.
 
@@ -375,7 +409,9 @@ Declare one-to-many notifications as fields on the context that owns them (usual
 public sealed class GameContext : Context<GameDomain, GameSystem, GamePresentation>
 {
     public readonly Signal ScoreChanged = new();
-    public readonly Signal<Damaged> Damaged = new();
+    public readonly Signal<Damaged> Damaged;
+
+    public GameContext() { Damaged = new Signal<Damaged>(this); } // tag: errors print GameContext
 }
 
 public readonly struct Damaged
@@ -398,6 +434,7 @@ Semantics:
 
 - `Signal` fires plain handlers; `Signal<T1..T5>` fires typed handlers with up to 5 arguments. Pack wider payloads into a `readonly struct`.
 - Signals are **per context instance** — publisher and subscriber must use the same instance (reach it with `Up<T>()`).
+- Each signal accepts an optional debug tag — any object, typically the owning context (`new Signal(this)`). Error messages print the tag's runtime type (`Signal (tag: MyGame.EnemyContext)<Hit>`); without a tag only the payload type is shown.
 - `SignalHandler` is a disposable struct — track it in the system so it dies with the node:
 
 ```csharp
@@ -407,10 +444,11 @@ protected override void OnAwake()
 }
 ```
 
-- Do not subscribe/unsubscribe a signal from inside a handler of the same signal — it logs an error and is refused. Dispose one-shot handlers from outside the handler.
+- Do not subscribe/unsubscribe a signal from inside a handler of the same signal — it logs an error naming the signal (tag type when provided, payload type, subscriber count) and is refused. Dispose one-shot handlers from outside the handler.
+- Never destroy the subscribing node from inside its own handler either: `Destroy()` disposes tracked subscriptions (same rule) and resets the presentation container while the call stack still uses it. Flag the node with `DestroyNextTick()` instead — the node and its subtree are destroyed at the start of the next tick pass (`IsDestroyPending` reads the flag). Pending nodes still receive signals until then, so guard handlers with `IsDead` / domain flags.
 - `Emit` on a signal with no subscribers costs a single null-safe loop.
 
-Use signals for one-to-many notifications (death → HUD + audio + analytics); use direct calls for parent ↔ known child. Systems are internal — cross-context logic goes through signals declared on contexts; read-only cross-context data stays on `Domain`.
+Use signals for one-to-many notifications (death → HUD + audio + analytics); use direct calls on the concrete context for parent ↔ known child (`System` is `protected`, so only the context itself can expose its logic). Read-only cross-context data stays on `Domain`.
 
 ---
 
@@ -461,11 +499,12 @@ The explorer mirrors the Editor window: search, expand/fold, private/hidden-stan
 1. Override `OnAwake / OnStart / OnTick / OnFixedTick / OnLateTick / OnDestroy`. Never Unity `Awake / Start / Update / OnDestroy` in gameplay code; in `Presentation` use `OnAwake / OnStart / OnTick / OnDisposing` (plus `OnResetPresentation` for pooled view reuse). Never override `Context.Initialize()` — it runs once from the base constructor and creates `Domain`/`System`; use `OnCreate` instead.
 2. State in `Domain`, decisions (including input) in `System`, Unity in `Presentation`.
 3. `Presentation` always exists — access it directly, never null-check it. Null-checking hides contract violations (see §2); let it throw.
-4. Spawn via `CreateChild` (`Immediate` only outside ticks), remove via `Destroy / DestroyChild`. Never `GameObject.Destroy` a context instance yourself, never hand-wire `Domain`/`System`.
+4. Spawn via `CreateChild` (`Immediate` only outside ticks), remove via `Destroy / DestroyChild / DestroyNextTick`. Never `GameObject.Destroy` a context instance yourself, never hand-wire `Domain`/`System`. From inside a handler of a signal the node itself is subscribed to, use `DestroyNextTick()` — immediate `Destroy()` would unsubscribe during `Emit` (refused, logged) and reset the presentation container mid-call.
 5. The root context is created, presented and registered by `ContextRoot` in `Awake`; do gameplay wiring in `void Bootstrap(...)`. `Prefab` is optional (null → `{GO}_ROOT` empty node).
 6. Reach parents via `Up<T>()` / `TryUp<T>()`, not stored references, so layers can be inserted later.
-7. `Context.OnCreate / OnDestroy` are an escape hatch, not a pattern.
-8. Check `IsDead` on cached child references; sweeping is deferred to end of tick.
+7. Expose cross-context behavior as public members on the concrete context (signals, facades over `protected System`); never reach into another context's `System` — it is invisible outside its assembly by design.
+8. `Context.OnCreate / OnDestroy` are an escape hatch, not a pattern.
+9. Check `IsDead` on cached child references; sweeping is deferred to end of tick.
 
 ## 13. Cheat sheet
 
@@ -474,9 +513,13 @@ The explorer mirrors the Editor window: search, expand/fold, private/hidden-stan
 Context.CreateChild<T>(prefab?, init?, isActive: true);
 Context.CreateChildImmediate<T>(prefab?, init?, isActive: true);
 Context.StartAllChildren();
+Context.CreateShared<T>(init?, isActive: true); // leaf service, no view; one live instance per type per scope
+Context.CreateSharedImmediate<T>(init?, isActive: true);
+Context.Shared<T>(); / Context.TryShared<T>(out var s); // nearest live service up the scope chain
 
 // Remove
-Context.Destroy(); / DestroyChild(ref|T|index);
+Context.Destroy(); / DestroyChild(ref|T|index); / DestroyNextTick(); // next tick: safe inside own signal handlers
+Context.IsDestroyPending; // true after DestroyNextTick, until destroyed
 
 // Read the tree (T = concrete context or implemented interface)
 Context.GetChild<T>(); / GetChild<T>(n); / GetChild(i);
@@ -499,9 +542,10 @@ Context.Up<T>(includeSelf: true); Context.TryUp<T>(out var x, includeSelf: true)
 Context.IsSimulationRunning(); / IsSimulationRunning<T>(); / IsSimulationRunning(from);
 EntryPoint.FindRoot<T>(); EntryPoint.MainContextsList; // FindRoot skips dead roots
 
-// Signals (fields on the context)
+// Signals (fields on the context; optional debug tag prints its type in errors)
 game.ScoreChanged.Emit(); game.Damaged.Emit(new Damaged(25));
 var h = game.Damaged.Subscribe(OnDamaged); h.Dispose();
+public readonly Signal<Hit> ReceiveHit; // + ctor: ReceiveHit = new Signal<Hit>(this);
 
 // System helpers
 Track(subscription); // auto-dispose on System.Destroy

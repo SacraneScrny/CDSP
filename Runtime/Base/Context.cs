@@ -964,6 +964,7 @@ namespace CDSP.Base
 
         internal void Tick(float deltaTime)
         {
+            if (_destroyPending) { Destroy(); return; }
             if (!IsReady) return;
             if (!IsUpdating) return;
             if (!IsUpdateTick) return;
@@ -994,6 +995,7 @@ namespace CDSP.Base
 
         internal void FixedTick(float deltaTime)
         {
+            if (_destroyPending) { Destroy(); return; }
             if (!IsReady) return;
             if (!IsUpdating) return;
             if (!IsUpdateFixedTick) return;
@@ -1024,6 +1026,7 @@ namespace CDSP.Base
 
         internal void LateTick(float deltaTime)
         {
+            if (_destroyPending) { Destroy(); return; }
             if (!IsReady) return;
             if (!IsUpdating) return;
             if (!IsUpdateLateTick) return;
@@ -1051,6 +1054,25 @@ namespace CDSP.Base
             InitializeCreatedSharedContexts();
         }
         internal virtual void OnLateTick(float deltaTime) { }
+
+        bool _destroyPending;
+
+        /// <summary>True after <see cref="DestroyNextTick"/> until the node is destroyed.
+        /// Subscriptions still fire in between — guard handlers with <c>IsDead</c> / domain flags.</summary>
+        public bool IsDestroyPending => _destroyPending && !IsDead;
+
+        /// <summary>Flags this node (and, at that point, its whole subtree) for destruction
+        /// at the start of the next tick pass instead of right now.
+        /// Use this instead of <see cref="Destroy"/> when the call happens from inside
+        /// a signal handler of a signal this node is subscribed to: destroying immediately
+        /// would unsubscribe (via tracked <c>SignalHandler.Dispose</c>) during <c>Emit</c>,
+        /// which is refused and logged as an error, and would reset the presentation
+        /// container while the current call stack still uses it.</summary>
+        public void DestroyNextTick()
+        {
+            if (IsDead) return;
+            _destroyPending = true;
+        }
 
         /// <summary>Destroys this node and its whole subtree (children first, reversed), detaches from the parent and releases the <see cref="GameObject"/> via the destroy action. The only way to remove self.</summary>
         public void Destroy()
@@ -1141,7 +1163,11 @@ namespace CDSP.Base
         where TDomain : Domain, new()
         where TSystem : System<TDomain>, new()
     {
-        internal TSystem System { get; set; }
+        /// <summary>Owning logic. Visible to derived context classes so they can expose
+        /// explicit public facades (methods, signals); invisible outside the owning
+        /// assembly. Cross-context calls must go through the concrete context's
+        /// public API — never reach into another context's system.</summary>
+        protected TSystem System { get; private protected set; }
 
         protected internal override void Initialize()
         {

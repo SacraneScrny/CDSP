@@ -203,6 +203,7 @@ namespace CDSP.Base
 
         internal void Tick(float deltaTime)
         {
+            if (_destroyPending) { Destroy(); return; }
             if (!IsReady) return;
             if (!IsUpdating) return;
             if (!IsUpdateTick) return;
@@ -215,6 +216,7 @@ namespace CDSP.Base
 
         internal void FixedTick(float deltaTime)
         {
+            if (_destroyPending) { Destroy(); return; }
             if (!IsReady) return;
             if (!IsUpdating) return;
             if (!IsUpdateFixedTick) return;
@@ -227,6 +229,7 @@ namespace CDSP.Base
 
         internal void LateTick(float deltaTime)
         {
+            if (_destroyPending) { Destroy(); return; }
             if (!IsReady) return;
             if (!IsUpdating) return;
             if (!IsUpdateLateTick) return;
@@ -236,6 +239,20 @@ namespace CDSP.Base
             OnLateTick(deltaTime);
         }
         internal virtual void OnLateTick(float deltaTime) { }
+
+        bool _destroyPending;
+
+        /// <summary>True after <see cref="DestroyNextTick"/> until the service is destroyed.</summary>
+        public bool IsDestroyPending => _destroyPending && IsValid;
+
+        /// <summary>Flags this service for destruction at the start of the next tick pass
+        /// instead of right now. Prefer over <see cref="Destroy"/> when the call happens
+        /// from inside a signal handler this service is subscribed to.</summary>
+        public void DestroyNextTick()
+        {
+            if (!IsValid) return;
+            _destroyPending = true;
+        }
 
         /// <summary>Destroys this service and detaches it from the owner (<see cref="IsValid"/> becomes false). The only way to remove self.</summary>
         public void Destroy()
@@ -289,7 +306,9 @@ namespace CDSP.Base
         where TDomain : SharedDomain, new()
         where TSystem : SharedSystem<TDomain>, new()
     {
-        internal TSystem System { get; set; }
+        /// <summary>Owning logic. Visible to derived shared-context classes so they can expose
+        /// explicit public facades; invisible outside the owning assembly.</summary>
+        protected TSystem System { get; private protected set; }
 
         protected internal override void Initialize()
         {

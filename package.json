@@ -1,7 +1,7 @@
 {
     "name": "com.cdsp.sackrany",
     "displayName": "CDSP — Context / Domain / System / Presentation",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "unity": "2021.3",
     "description": "Lightweight Unity architecture: tree of contexts with strict Domain / System / Presentation separation, managed lifecycle, ticks, per-branch time scale and signal-based notifications. Zero dependencies.",
     "keywords": [

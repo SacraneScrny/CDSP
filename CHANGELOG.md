@@ -4,6 +4,22 @@ All notable changes to this package will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Added
+
+- `Context.DestroyNextTick()` + `IsDestroyPending` (also on `SharedContext`): flag a node for destruction at the start of the next tick pass instead of destroying immediately. For self-removal from inside a handler of a signal the node itself is subscribed to — immediate `Destroy()` would unsubscribe during `Emit` (refused, logged) and reset the presentation container mid-call.
+- Optional debug tag on signals: `new Signal(tag)`, `new Signal<T>(tag)`, … (up to 5 payload args), where `tag` is any object — typically the owning context, passed from its constructor. Errors print the tag's runtime type alongside the payload type and subscriber count, e.g. `Signal (tag: MyGame.EnemyContext)<Hit>: cannot unsubscribe from inside a handler of the same signal (2 subscriber(s)). ...`.
+- README: documented the `SharedContext` flavor (leaf services for splitting god-contexts: attach via `CreateShared<T>`, reach via `Shared<T>()` / `TryShared<T>()`), the context-facade pattern over the newly protected `System`, the signal error reference, and the `DestroyNextTick` rule.
+
+### Changed
+
+- `Context<TDomain, TSystem>.System` and `SharedContext<TDomain, TSystem>.System` are now `protected` (were `internal`): derived context classes can expose explicit public facades (`public void Damage(float a) => System.Damage(a);`); outside the owning assembly only the context's public API (`Domain`, signals, facades) is visible. `Presentation` stays public.
+
+### Removed
+
+- `Samples~/ShatterDive` (SHATTERDIVE Roguelite sample): extracted out of the package; the package ships the `MinimalCounter` sample only.
+
 ## [0.2.0] - 2026-10-20
 
 ### Added
